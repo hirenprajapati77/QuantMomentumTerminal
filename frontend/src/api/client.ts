@@ -4,9 +4,21 @@ const BASE_URL = window.location.port === '5173' || window.location.hostname ===
   ? 'http://localhost:8000/api/v1'
   : '/api/v1';
 
+let sessionToken: string | null = null;
+
 export const apiClient = {
-  async get(endpoint: string) {
-    const res = await fetch(`${BASE_URL}${endpoint}`);
+  setToken(token: string | null) {
+    sessionToken = token;
+  },
+
+  async get(endpoint: string, customHeaders: any = {}) {
+    const headers: any = { ...customHeaders };
+    if (sessionToken) {
+      headers['Authorization'] = `Bearer ${sessionToken}`;
+    }
+    const res = await fetch(`${BASE_URL}${endpoint}`, {
+      headers
+    });
     if (!res.ok) {
       const err = await res.json().catch(() => ({ detail: 'API request failed' }));
       throw new Error(err.detail || 'API request failed');
@@ -14,12 +26,17 @@ export const apiClient = {
     return res.json();
   },
 
-  async post(endpoint: string, body: any) {
+  async post(endpoint: string, body: any, customHeaders: any = {}) {
+    const headers: any = {
+      'Content-Type': 'application/json',
+      ...customHeaders
+    };
+    if (sessionToken) {
+      headers['Authorization'] = `Bearer ${sessionToken}`;
+    }
     const res = await fetch(`${BASE_URL}${endpoint}`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers,
       body: JSON.stringify(body),
     });
     if (!res.ok) {

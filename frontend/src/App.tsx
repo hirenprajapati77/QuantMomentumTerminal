@@ -6,6 +6,7 @@ import EliteSetups from './pages/EliteSetups';
 import NearBreakout from './pages/NearBreakout';
 import Backtest from './pages/Backtest';
 import StockDetail from './pages/StockDetail';
+import SettingsPage from './pages/Settings';
 import { apiClient } from './api/client';
 import { 
   TrendingUp, 
@@ -14,11 +15,13 @@ import {
   Eye, 
   LineChart, 
   HelpCircle,
-  Database
+  Database,
+  Settings as SettingsIcon
 } from 'lucide-react';
 
 export default function App() {
   const [activePage, setActivePage] = useState<string>('Dashboard');
+  const [settingsToken, setSettingsToken] = useState<string | null>(null);
   const [pageParams, setPageParams] = useState<any>(null);
   const [lastScanDate, setLastScanDate] = useState<string>('Checking...');
 
@@ -56,6 +59,17 @@ export default function App() {
         return <NearBreakout onNavigate={handleNavigate} />;
       case 'Backtest':
         return <Backtest />;
+      case 'Settings':
+        return (
+          <SettingsPage 
+            token={settingsToken} 
+            onUnlock={(token) => setSettingsToken(token)}
+            onLock={() => {
+              setSettingsToken(null);
+              apiClient.setToken(null);
+            }} 
+          />
+        );
       case 'StockDetail':
         return (
           <StockDetail 
@@ -114,6 +128,13 @@ export default function App() {
             >
               <LineChart className="nav-item-icon" />
               Backtesting
+            </li>
+            <li 
+              className={`nav-item ${activePage === 'Settings' ? 'active' : ''}`}
+              onClick={() => handleNavigate('Settings')}
+            >
+              <SettingsIcon className="nav-item-icon" />
+              Settings
             </li>
           </ul>
         </nav>

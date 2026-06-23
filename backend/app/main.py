@@ -8,6 +8,7 @@ from backend.app.api.v1.auth import router as auth_router
 from backend.app.api.v1.scanner import router as scanner_router
 from backend.app.api.v1.backtest import router as backtest_router
 from backend.app.api.v1.universe import router as universe_router
+from backend.app.api.v1.settings import router as settings_router
 from backend.app.services.scheduler import start_scheduler
 
 # Configure logging
@@ -39,6 +40,7 @@ app.include_router(auth_router, prefix="/api/v1/fyers", tags=["Authentication Ca
 app.include_router(scanner_router, prefix="/api/v1/scanner", tags=["Scanner"])
 app.include_router(backtest_router, prefix="/api/v1/backtest", tags=["Backtesting"])
 app.include_router(universe_router, prefix="/api/v1/universe", tags=["Universe"])
+app.include_router(settings_router, prefix="/api/v1/settings", tags=["Settings"])
 
 @app.on_event("startup")
 async def on_startup():

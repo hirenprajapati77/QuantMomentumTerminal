@@ -21,6 +21,8 @@ _redis_client = None
 def _get_redis():
     """Return a Redis client, or None if Redis is unavailable."""
     global _redis_client
+    if _redis_client is False:
+        return None
     if _redis_client is not None:
         return _redis_client
     try:
@@ -31,8 +33,8 @@ def _get_redis():
         logger.info("Redis cache connected: %s", settings.REDIS_URL)
     except Exception as exc:
         logger.warning("Redis unavailable — caching disabled: %s", exc)
-        _redis_client = None
-    return _redis_client
+        _redis_client = False
+    return _redis_client if _redis_client else None
 
 
 def _cache_key(symbol: str, date: datetime.date) -> str:
