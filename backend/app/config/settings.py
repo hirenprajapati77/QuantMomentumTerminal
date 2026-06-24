@@ -1,4 +1,5 @@
 import os
+import warnings
 import json
 from pathlib import Path
 from dotenv import load_dotenv
@@ -45,7 +46,14 @@ class Settings:
 
     @property
     def FYERS_SECRET_ID(self) -> str:
-        return self._read_config("secret_id", self._FYERS_SECRET_ID)
+        raw_secret = self._read_config("secret_id", self._FYERS_SECRET_ID)
+        if raw_secret and raw_secret != self._FYERS_SECRET_ID:
+            from backend.app.core.crypto import decrypt_str
+            try:
+                return decrypt_str(raw_secret)
+            except Exception as e:
+                warnings.warn(f"Failed to decrypt FYERS_SECRET_ID, returning raw value: {e}", stacklevel=1)
+        return raw_secret
 
     @property
     def FYERS_REDIRECT_URI(self) -> str:
@@ -55,3 +63,15 @@ settings = Settings()
 
 # Ensure data directory exists
 settings.DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+# Warn loudly if insecure defaults are in use
+if settings.SETTINGS_PIN == "1234":
+    warnings.warn(
+        "SECURITY: SETTINGS_PIN is using the default '1234'. Set SETTINGS_PIN env var before production deployment.",
+        stacklevel=1
+    )
+if settings.SECRET_KEY == "supersecretkey":
+    warnings.warn(
+        "SECURITY: SECRET_KEY is using the default value. Set SECRET_KEY env var before production deployment.",
+        stacklevel=1
+    )

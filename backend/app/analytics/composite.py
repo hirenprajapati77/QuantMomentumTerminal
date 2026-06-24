@@ -1,15 +1,15 @@
 import pandas as pd
 import numpy as np
 
-from app.scanner.trend import calculate_trend_score
-from app.scanner.vcp import calculate_vcp_score
-from app.scanner.vdu import calculate_vdu_score
-from app.scanner.rs import calculate_raw_rs, score_universe_rs
-from app.scanner.volume import calculate_volume_expansion
-from app.scanner.breakout import calculate_breakout_quality
-from app.scanner.sector_indicator import score_sectors
-from app.scanner.cpr import calculate_cpr_score
-from app.scanner.fundamental_indicator import calculate_fundamental_score
+from backend.app.scanner.trend import calculate_trend_score
+from backend.app.scanner.vcp import calculate_vcp_score
+from backend.app.scanner.vdu import calculate_vdu_score
+from backend.app.scanner.rs import calculate_raw_rs, score_universe_rs
+from backend.app.scanner.volume import calculate_volume_expansion
+from backend.app.scanner.breakout import calculate_breakout_quality
+from backend.app.scanner.sector_indicator import score_sectors
+from backend.app.scanner.cpr import calculate_cpr_score
+from backend.app.scanner.fundamental_indicator import calculate_fundamental_score
 
 def calculate_raw_signals(stock_df: pd.DataFrame, sector_df: pd.DataFrame, fundamental_data: dict, sector_name: str) -> dict:
     """
@@ -29,43 +29,7 @@ def calculate_raw_signals(stock_df: pd.DataFrame, sector_df: pd.DataFrame, funda
         "baseline_vol": 0.0,
         "recent_vol": 0.0
     }
-    if vcp_res["status"] == "passed" and vcp_res["contraction_count"] > 0:
-        # VCP detected, we use the shifted swing indices from VCP check
-        # Wait, the VCP score returns indices on the shifted/aligned df.
-        # Let's find first swing high index and last swing low index
-        # We need the relative indexes since vcp_score works on stock_df
-        # Since vcp_score shifts indices by 20 offset, we can calculate start and end.
-        # Let's search raw_contractions inside VCP.
-        # Wait! To make it robust, we can adjust shifted indexes.
-        # Shifted High 1 index and Shifted Low N index are stored in best VCP candidate.
-        # Let's adjust back by subtracting offset if needed, or VDU can use the shifted ones
-        # if it receives the same df. Yes, vdu uses the same df, so shifted indexes are correct!
-        # Let's construct swing points or read raw swing points from VCP output.
-        # Wait, let's look at what calculate_vcp_score returns.
-        # In our implementation, it returns:
-        # {"quality": q, "contraction_count": c, "contraction_ratios": r, "score": s, "status": "passed"}
-        # Wait! It didn't return the start and end indexes!
-        # Let's modify calculate_vcp_score to return "start_idx" and "end_idx" of the pattern!
-        # That is extremely helpful so VDU doesn't have to re-derive them!
-        # Wait, does calculate_vcp_score return start_idx and end_idx?
-        # Yes, we can update vcp.py to return them, or we can look for them here.
-        # Actually, let's update vcp.py to return start_idx and end_idx.
-        # Let's check how calculate_vcp_score was written.
-        # It had:
-        # pattern_info = {
-        #     "quality": quality,
-        #     "contraction_count": count,
-        #     "contraction_ratios": [float(r) for r in ratios],
-        #     "score": score,
-        #     "status": "passed",
-        #     "remarks": f"Valid VCP with {count} contractions"
-        # }
-        # Let's add "start_idx": candidate[0]["high_idx"] and "end_idx": candidate[-1]["low_idx"]
-        # to pattern_info!
-        pass
-
-    # For now, let's write the wrapper. If VCP is passed, we get its start_idx and end_idx
-    # which we will add to VCP output.
+    # VDU uses VCP pattern bounds (start_idx, end_idx) returned by calculate_vcp_score
     start_idx = vcp_res.get("start_idx")
     end_idx = vcp_res.get("end_idx")
     if start_idx is not None and end_idx is not None:

@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 from backend.app.config.settings import settings
 from backend.app.services.scanner import _get_redis
 from backend.scripts.login_fyers import generate_fyers_login_url
+from backend.app.core.crypto import encrypt_str
 
 router = APIRouter()
 
@@ -172,7 +173,7 @@ def update_fyers_config(payload: FyersConfigRequest, session: str = Depends(get_
     try:
         config_data = {
             "app_id": payload.app_id.strip(),
-            "secret_id": payload.secret_id.strip(),
+            "secret_id": encrypt_str(payload.secret_id.strip()),
             "redirect_uri": payload.redirect_uri.strip()
         }
         

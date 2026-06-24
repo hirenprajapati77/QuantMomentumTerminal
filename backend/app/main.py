@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from backend.app.config.settings import settings
@@ -18,39 +19,49 @@ logging.basicConfig(
 )
 logger = logging.getLogger("nse_scanner.main")
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    logger.info("Initializing database...")
+    init_db()
+    logger.info("Starting Daily Ingestion Scheduler...")
+    task = asyncio.create_task(start_scheduler())
+    logger.info("Startup sequence completed successfully!")
+    yield
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
+
 app = FastAPI(
     title="NSE India Equity Momentum Scanner API",
     description="Backend service layer for composite strategy indicators, scanners, and backtesting simulator.",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan
 )
 
-# Configure CORS Middleware for dashboard integration
+# CORS: allow credentials requires explicit origins, not wildcard
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins for local/production dashboard UI
+    allow_origins=[
+        "http://localhost:5173",
+        "http://localhost:3000",
+        "http://localhost:80",
+        "http://localhost",
+        "http://129.159.230.41",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 # Register API Routers
-# Include auth router as both /api/v1/auth and /api/v1/fyers to support whatever callback redirect URI is configured
 app.include_router(auth_router, prefix="/api/v1/auth", tags=["Authentication"])
 app.include_router(auth_router, prefix="/api/v1/fyers", tags=["Authentication Callback"])
 app.include_router(scanner_router, prefix="/api/v1/scanner", tags=["Scanner"])
 app.include_router(backtest_router, prefix="/api/v1/backtest", tags=["Backtesting"])
 app.include_router(universe_router, prefix="/api/v1/universe", tags=["Universe"])
 app.include_router(settings_router, prefix="/api/v1/settings", tags=["Settings"])
-
-@app.on_event("startup")
-async def on_startup():
-    logger.info("Initializing database...")
-    init_db()
-    
-    logger.info("Starting Daily Ingestion Scheduler...")
-    # Start scheduler background task
-    asyncio.create_task(start_scheduler())
-    logger.info("Startup sequence completed successfully!")
 
 @app.get("/")
 def read_root():

@@ -32,10 +32,14 @@ def calculate_volume_expansion(df: pd.DataFrame) -> dict:
     elif ratio <= 3.0:
         score = 10
         status = "passed"
-    else:
-        # Exhaustion/climactic volume penalty
+    elif ratio <= 5.0:
+        # Exhaustion/climactic volume — still valid but penalised
         score = 7
         status = "passed"
+    else:
+        # >5x is a climax top — hard reject
+        score = 0
+        status = "failed"
 
     return {
         "score": score,

@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from backend.app.config.settings import settings
 from backend.app.core.exceptions import FyersTokenExpiredException, IngestionException
 from backend.app.models.candle import DailyCandle
+from backend.app.core.crypto import decrypt_str
 
 logger = logging.getLogger("nse_scanner.market_data")
 
@@ -29,13 +30,13 @@ class MarketDataService:
             raise FyersTokenExpiredException("Fyers token file missing. Please run login_fyers.py.")
         
         # Check token modification time (if older than 24 hours, consider expired)
-        mtime = datetime.datetime.fromtimestamp(token_path.stat().st_mtime)
+        mtime = datetime.datetime.utcfromtimestamp(token_path.stat().st_mtime)
         age = datetime.datetime.now() - mtime
         if age > datetime.timedelta(hours=24):
             logger.critical("Fyers access token is older than 24 hours. Action required: Run Fyers login helper.")
             raise FyersTokenExpiredException("Fyers token expired. Please run login_fyers.py.")
             
-        return token_path.read_text().strip()
+        return decrypt_str(token_path.read_text().strip())
 
     def fetch_fyers_ohlcv(self, symbol: str, start_date: datetime.date, end_date: datetime.date) -> pd.DataFrame:
         """Fetches OHLCV candles from Fyers History API with retries and exponential backoff"""
@@ -74,7 +75,7 @@ class MarketDataService:
                         df = pd.DataFrame(candles, columns=["timestamp", "open", "high", "low", "close", "volume"])
                         # Convert epoch timestamps to datetime.date
                         # Fyers returns epoch timestamp in seconds at 00:00:00 UTC or market open
-                        df["date"] = df["timestamp"].apply(lambda t: datetime.date.fromtimestamp(t))
+                        df["date"] = df["timestamp"].apply(lambda t: datetime.datetime.utcfromtimestamp(t).date())
                         df = df.drop(columns=["timestamp"])
                         return df
                     elif data.get("s") == "no_data":

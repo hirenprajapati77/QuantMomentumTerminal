@@ -1,3 +1,4 @@
+from typing import Optional
 import datetime
 import json
 import logging
@@ -10,8 +11,35 @@ from backend.app.models.candle import DailyCandle
 from backend.app.models.scan_result import ScanResult
 from backend.app.analytics.composite import calculate_raw_signals, compute_composite_scores
 from backend.app.config.settings import settings
+from backend.app.core.utils import get_safe_float
 
 logger = logging.getLogger("nse_scanner.scanner")
+
+def compute_target3_from_values(
+    entry_price: Optional[float],
+    target1: Optional[float],
+    target2: Optional[float],
+    adr_pct: Optional[float],
+) -> Optional[float]:
+    """
+    Compute target3 from raw values (no DB query).
+    Used during scan to precompute and store target3 on the ScanResult row.
+    """
+    try:
+        if not entry_price or not target1 or not target2:
+            return None
+        t1_move = target1 - entry_price
+        t2_move = target2 - entry_price
+        if t1_move <= 0 or t2_move <= 0:
+            return None
+        extension = t2_move * 1.618
+        t3 = round(entry_price + extension, 2)
+        # Sanity cap: target3 must not exceed entry * 2.0
+        if t3 > entry_price * 2.0:
+            return None
+        return t3
+    except Exception:
+        return None
 
 # ---------------------------------------------------------------------------
 # Redis client — lazy-initialised, fails gracefully if Redis is unavailable
@@ -67,13 +95,7 @@ def _write_cache(symbol: str, date: datetime.date, signals: dict, ttl_seconds: i
     except Exception as exc:
         logger.warning("Redis write error for %s %s: %s", symbol, date, exc)
 
-def get_safe_float(val, default=0.0):
-    if val is None or pd.isna(val):
-        return default
-    try:
-        return float(val)
-    except:
-        return default
+
 
 class ScannerService:
     def resolve_pending_entries(self, db: Session):
@@ -112,20 +134,42 @@ class ScannerService:
                     r.stop = stop_price
                     r.target1 = entry_price * 1.10
                     r.target2 = entry_price * 1.20
-                    r.target3 = None
+                    r.target3 = compute_target3_from_values(
+                        entry_price=entry_price,
+                        target1=entry_price * 1.10,
+                        target2=entry_price * 1.20,
+                        adr_pct=None
+                    )
                     db.add(r)
                     logger.info(f"Resolved pending entry for {r.symbol} on {r.date}: entry={entry_price}, status={r.entry_status}")
             db.commit()
 
-        # Also update holding days for already filled positions
+        # Update holding days for all filled positions in one aggregated query
         filled_results = db.query(ScanResult).filter(ScanResult.entry_status == "Filled").all()
         if filled_results:
+            from sqlalchemy import func
+            # One query: for each (symbol, signal_date) pair, count candles after signal_date
+            symbol_list = list({r.symbol for r in filled_results})
+
+            counts_raw = (
+                db.query(
+                    ScanResult.symbol,
+                    ScanResult.date,
+                    func.count(DailyCandle.date).label("cnt")
+                )
+                .join(DailyCandle, 
+                      (DailyCandle.symbol == ScanResult.symbol) & 
+                      (DailyCandle.date > ScanResult.date))
+                .filter(
+                    ScanResult.entry_status == "Filled",
+                    ScanResult.symbol.in_(symbol_list)
+                )
+                .group_by(ScanResult.symbol, ScanResult.date)
+                .all()
+            )
+            counts_map = {(row.symbol, row.date): row.cnt for row in counts_raw}
             for r in filled_results:
-                count = db.query(DailyCandle).filter(
-                    DailyCandle.symbol == r.symbol,
-                    DailyCandle.date > r.date
-                ).count()
-                r.holding_days = count
+                r.holding_days = counts_map.get((r.symbol, r.date), 0)
                 db.add(r)
             db.commit()
 
@@ -161,10 +205,13 @@ class ScannerService:
                 "sector": f.sector or "Unknown"
             }
             
-        # 3. Load all candles up to target_date
-        # We need historical candles for moving averages, RS returns etc. (at least 150 candles)
+        # 3. Load candles for a 400-day window (252 trading days buffer)
+        # No indicator needs more than 200 bars; loading all history wastes RAM.
+        import datetime as _dt
+        lookback_start = target_date - _dt.timedelta(days=400)
         candles_query = db.query(DailyCandle).filter(
             DailyCandle.symbol.in_(active_symbols),
+            DailyCandle.date >= lookback_start,
             DailyCandle.date <= target_date
         ).order_by(DailyCandle.date.asc()).all()
         
@@ -192,11 +239,22 @@ class ScannerService:
             candles_by_symbol[sym] = group.sort_values('date').reset_index(drop=True)
             
         # 4. Create market average series for RS index
-        market_avg = df_all.groupby('date')['close'].mean().reset_index()
+        # Return-based benchmark: mean of daily pct_change across all symbols
+        # Prevents high-priced stocks from dominating the benchmark
+        df_all_copy = df_all.copy()
+        df_all_copy['daily_ret'] = df_all_copy.groupby('symbol')['close'].pct_change()
+        market_avg = (
+            df_all_copy.groupby('date')['daily_ret']
+            .mean()
+            .reset_index()
+            .rename(columns={'daily_ret': 'market_ret'})
+        )
+        # Convert mean daily returns to a cumulative index starting at 1.0
         market_avg = market_avg.sort_values('date').reset_index(drop=True)
-        market_avg['return_20d'] = market_avg['close'].pct_change(20)
-        market_avg['return_50d'] = market_avg['close'].pct_change(50)
-        market_avg['return_100d'] = market_avg['close'].pct_change(100)
+        market_avg['market_close'] = (1 + market_avg['market_ret'].fillna(0)).cumprod()
+        market_avg['return_20d'] = market_avg['market_close'].pct_change(20)
+        market_avg['return_50d'] = market_avg['market_close'].pct_change(50)
+        market_avg['return_100d'] = market_avg['market_close'].pct_change(100)
         market_avg_map = market_avg.set_index('date').to_dict('index')
         
         # 5. Precompute breakout candle parameters
@@ -380,7 +438,12 @@ class ScannerService:
                 stop=stop_price,
                 target1=entry_price * 1.10,
                 target2=entry_price * 1.20,
-                target3=None,  # dynamic trailing stop
+                target3=compute_target3_from_values(
+                    entry_price=entry_price,
+                    target1=entry_price * 1.10,
+                    target2=entry_price * 1.20,
+                    adr_pct=None,
+                ),
                 confidence=confidence,
                 remarks=remarks,
                 holding_days=holding_days

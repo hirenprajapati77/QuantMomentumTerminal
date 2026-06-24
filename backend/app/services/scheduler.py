@@ -1,6 +1,7 @@
 import asyncio
 import datetime
 import logging
+from zoneinfo import ZoneInfo
 from sqlalchemy.orm import Session
 from backend.app.storage.database import SessionLocal
 from backend.app.services.market_data import MarketDataService
@@ -13,7 +14,7 @@ def get_ist_now() -> datetime.datetime:
     """
     Returns current time in Indian Standard Time (IST = UTC + 5:30).
     """
-    return datetime.datetime.utcnow() + datetime.timedelta(hours=5, minutes=30)
+    return datetime.datetime.now(ZoneInfo("Asia/Kolkata"))
 
 async def run_daily_ingestion_and_scan(target_date: datetime.date):
     """
@@ -35,11 +36,11 @@ async def run_daily_ingestion_and_scan(target_date: datetime.date):
             
         logger.info(f"Active universe has {len(active_symbols)} symbols to update.")
         
-        # Try downloading Bhavcopy with 3 attempts and 15-minute delay
+        # Try downloading Bhavcopy with 4 attempts and 15-minute delay
         bhav_df = None
-        for attempt in range(1, 4):
+        for attempt in range(1, 5):
             try:
-                logger.info(f"Attempting to download NSE Bhavcopy for {target_date} (Attempt {attempt}/3)...")
+                logger.info(f"Attempting to download NSE Bhavcopy for {target_date} (Attempt {attempt}/4)...")
                 bhav_df = market_data_service.download_nse_bhavcopy(target_date)
                 if not bhav_df.empty:
                     logger.info("NSE Bhavcopy successfully downloaded.")
@@ -49,12 +50,12 @@ async def run_daily_ingestion_and_scan(target_date: datetime.date):
             except Exception as e:
                 logger.warning(f"Bhavcopy download failed on attempt {attempt}: {e}")
                 
-            if attempt < 3:
+            if attempt < 4:
                 logger.info("Waiting 15 minutes before retrying...")
                 await asyncio.sleep(15 * 60) # 15 minutes
                 
         if bhav_df is None or bhav_df.empty:
-            logger.error(f"Failed to fetch Bhavcopy for {target_date} after 3 attempts. Proceeding with OHLCV only.")
+            logger.error(f"Failed to fetch Bhavcopy for {target_date} after 4 attempts. Proceeding with OHLCV only.")
             bhavcopy_cache = {}
         else:
             bhavcopy_cache = {target_date: bhav_df}
@@ -94,8 +95,8 @@ async def start_scheduler():
             # Check if weekday (Monday=0 to Friday=4)
             is_weekday = ist_now.weekday() < 5
             
-            # Trigger at 6:30 PM IST (18:30)
-            is_trigger_time = ist_now.hour == 18 and ist_now.minute >= 30
+            # Trigger at 7:00 PM IST (19:00)
+            is_trigger_time = ist_now.hour == 19
             
             if is_weekday and is_trigger_time and today_date != last_run_date:
                 # Trigger worker task

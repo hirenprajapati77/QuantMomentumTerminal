@@ -1,8 +1,6 @@
 // API Client for backend services
 
-const BASE_URL = window.location.port === '5173' || window.location.hostname === 'localhost' && window.location.port === '3000'
-  ? 'http://localhost:8000/api/v1'
-  : '/api/v1';
+const BASE_URL = (import.meta.env.VITE_API_URL as string) ?? '/api/v1';
 
 let sessionToken: string | null = null;
 

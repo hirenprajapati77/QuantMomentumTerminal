@@ -6,6 +6,7 @@ from fastapi import APIRouter, Query, HTTPException
 from fastapi.responses import HTMLResponse
 from backend.app.config.settings import settings
 from backend.scripts.login_fyers import generate_fyers_login_url, exchange_code_for_token
+from backend.app.core.crypto import encrypt_str
 
 router = APIRouter()
 
@@ -48,7 +49,7 @@ def oauth_callback(
         # Save token to file
         token_path = settings.token_path
         token_path.parent.mkdir(parents=True, exist_ok=True)
-        token_path.write_text(access_token)
+        token_path.write_text(encrypt_str(access_token))
         
         # Return a nice premium styled HTML success page
         html_content = """
@@ -153,11 +154,12 @@ def oauth_callback(
             <div class="card">
                 <div class="error-icon">✗</div>
                 <h1>Authentication Failed</h1>
-                <p>Failed to exchange authorization code for access token. Error details: {str(e)}</p>
+                <p>Authentication failed. Please try again or contact your administrator.</p>
             </div>
         </body>
         </html>
         """
+        logger.error(f"Fyers token exchange failed: {e}", exc_info=True)
         return HTMLResponse(content=error_html, status_code=400)
 
 @router.get("/status")

@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-from app.scanner.vcp import calculate_atr
+from backend.app.scanner.vcp import calculate_atr
 
 def precalculate_confirmed_swing_lows(df: pd.DataFrame) -> pd.Series:
     """
@@ -40,13 +40,13 @@ def precalculate_confirmed_swing_lows(df: pd.DataFrame) -> pd.Series:
 class BacktestEngine:
     def __init__(self, initial_capital: float = 1000000.0, slippage: float = 0.0015, time_stop_days: int = 30):
         self.initial_capital = initial_capital
-        self.capital = initial_capital
-        self.slippage = slippage # 0.15% per side
+        self.slippage = slippage
         self.time_stop_days = time_stop_days
+        self._reset()
 
-        
-        # Positions track:
-        # {symbol: {"entry_price": p, "qty": q, "entry_date": d, "holding_days": h, "target1_hit": b, "distribution_days": []}}
+    def _reset(self):
+        """Reset all mutable state so the engine can be reused safely."""
+        self.capital = self.initial_capital
         self.positions = {}
         self.trade_log = []
         self.equity_curve = []
@@ -77,6 +77,7 @@ class BacktestEngine:
         df_dict: dict mapping symbol (str) to OHLCV DataFrame
         signals_dict: dict mapping symbol (str) to boolean Series of entry signals (True at index t means trigger entry)
         """
+        self._reset()
         # Align all dataframes by date
         # Find all unique dates across all dataframes, sort chronologically
         all_dates = set()
@@ -241,7 +242,7 @@ class BacktestEngine:
             # 3. Check entries (signals generated on yesterday's bar t-1)
             # Allocate equal sizing of 10% of portfolio value per trade
             max_positions = 5
-            trade_allocation = self.capital * 0.20 # 20% of capital per position
+            trade_allocation = self.initial_capital * 0.20  # fixed 20% of initial capital per position
             
             for sym, signals in signals_dict.items():
                 if sym in self.positions or len(self.positions) >= max_positions:
@@ -306,17 +307,22 @@ class BacktestEngine:
                 "expectancy": 0.0
             }
 
-        # Sells final represent closed trades P&L
-        closed_trades = trades_df[trades_df['direction'] == 'SELL_FINAL']
-        # We need to map partial exits back to compute exact trade P&L
-        # Let's group trade P&L by symbol and entry_date
+        # Group all rows by trade (symbol + entry_date) to sum partial + final PnL
         pnl_by_trade = trades_df.groupby(['symbol', 'entry_date'])['pnl'].sum().reset_index()
         total_pnl = pnl_by_trade['pnl'].sum()
-        
-        wins = pnl_by_trade[pnl_by_trade['pnl'] > 0]
-        win_rate = len(wins) / len(pnl_by_trade) * 100 if len(pnl_by_trade) > 0 else 0.0
-        
-        expectancy = pnl_by_trade['pnl'].mean() if len(pnl_by_trade) > 0 else 0.0
+
+        # Only count closed trades (those with a SELL_FINAL row) in win rate / expectancy
+        closed_keys = set(
+            trades_df[trades_df['direction'] == 'SELL_FINAL']
+            .apply(lambda r: (r['symbol'], r['entry_date']), axis=1)
+        )
+        closed_pnl = pnl_by_trade[
+            pnl_by_trade.apply(lambda r: (r['symbol'], r['entry_date']) in closed_keys, axis=1)
+        ]
+
+        wins = closed_pnl[closed_pnl['pnl'] > 0]
+        win_rate = len(wins) / len(closed_pnl) * 100 if len(closed_pnl) > 0 else 0.0
+        expectancy = closed_pnl['pnl'].mean() if len(closed_pnl) > 0 else 0.0
 
         # Calculate CAGR and Sharpe based on equity curve
         eq_df = pd.DataFrame(self.equity_curve)
@@ -351,7 +357,7 @@ class BacktestEngine:
             max_dd = float(eq_df['dd'].min())
 
         return {
-            "total_trades": len(pnl_by_trade),
+            "total_trades": len(closed_pnl),
             "win_rate": float(win_rate),
             "total_pnl": float(total_pnl),
             "cagr": float(cagr),

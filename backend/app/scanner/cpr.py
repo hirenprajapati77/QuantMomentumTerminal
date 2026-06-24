@@ -46,6 +46,9 @@ def calculate_cpr_score(df: pd.DataFrame) -> dict:
     avg_width = float(trailing_widths.mean())
     pct30_width = float(trailing_widths.quantile(0.30))
 
+    if any(pd.isna(v) for v in [today_width, today_tc, today_bc, today_pivot]):
+        return default_failed
+
     is_narrow = today_width <= pct30_width
     is_expanding = today_width > avg_width
 

@@ -1,6 +1,5 @@
 import datetime
 from typing import Optional, List
-import pandas as pd
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field
@@ -12,72 +11,7 @@ from backend.app.services.scanner import ScannerService
 router = APIRouter()
 scanner_service = ScannerService()
 
-def compute_dynamic_target3(r: ScanResult, db: Session) -> Optional[float]:
-    """
-    Computes the trailing stop dynamically for a filled trade.
-    If Target 1 (entry * 1.10) was hit by any candle high after entry_date (i.e. date > r.date):
-    trailing stop is max(ema21, confirmed_swing_low) on the latest day.
-    """
-    if r.entry_status not in ["Filled", "Stopped Out"] or r.entry is None:
-        return None
-        
-    # Get all candles after signal date, chronologically ordered
-    candles = db.query(DailyCandle).filter(
-        DailyCandle.symbol == r.symbol,
-        DailyCandle.date > r.date
-    ).order_by(DailyCandle.date.asc()).all()
-    
-    if not candles:
-        return None
-        
-    # Check if Target 1 was crossed by high of any candle
-    target1_level = r.entry * 1.10
-    target1_hit = False
-    for c in candles:
-        if float(c.high) >= target1_level:
-            target1_hit = True
-            break
-            
-    if not target1_hit:
-        return None
-        
-    # Get the entire history of candles for this symbol to calculate EMA21 and swing lows accurately
-    all_candles = db.query(DailyCandle).filter(
-        DailyCandle.symbol == r.symbol
-    ).order_by(DailyCandle.date.asc()).all()
-    
-    if not all_candles:
-        return None
-        
-    df = pd.DataFrame([{
-        "date": c.date,
-        "open": float(c.open),
-        "high": float(c.high),
-        "low": float(c.low),
-        "close": float(c.close),
-        "volume": int(c.volume)
-    } for c in all_candles])
-    
-    if len(df) < 5:
-        return None
-        
-    # Calculate indicators
-    df['ema21'] = df['close'].ewm(span=21, adjust=False).mean()
-    
-    # 5-bar fractal swing low
-    from backend.app.backtest.engine import precalculate_confirmed_swing_lows
-    df['confirmed_swing_low'] = precalculate_confirmed_swing_lows(df)
-    
-    # Find the row for the latest date (or the date of the latest candle)
-    latest_row = df.iloc[-1]
-    ema21_val = float(latest_row['ema21'])
-    swing_low_val = latest_row['confirmed_swing_low']
-    
-    trail_level = ema21_val
-    if not pd.isna(swing_low_val):
-        trail_level = max(trail_level, float(swing_low_val))
-        
-    return trail_level
+
 
 class ScanRequest(BaseModel):
     date: Optional[str] = Field(None, description="Date in YYYY-MM-DD format. Defaults to current date if not provided.")
@@ -149,7 +83,7 @@ def trigger_scan(payload: Optional[ScanRequest] = None, db: Session = Depends(ge
                 "stop": r.stop,
                 "target1": r.target1,
                 "target2": r.target2,
-                "target3": compute_dynamic_target3(r, db),
+                "target3": r.target3,
                 "confidence": r.confidence,
                 "remarks": r.remarks,
                 "holding_days": r.holding_days
@@ -217,7 +151,7 @@ def get_scan_results(
             "stop": r.stop,
             "target1": r.target1,
             "target2": r.target2,
-            "target3": compute_dynamic_target3(r, db),
+            "target3": r.target3,
             "confidence": r.confidence,
             "remarks": r.remarks,
             "holding_days": r.holding_days

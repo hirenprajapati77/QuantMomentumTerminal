@@ -12,16 +12,11 @@ from backend.app.models.fundamental import CompanyFundamental
 from backend.app.models.candle import DailyCandle
 from backend.app.analytics.composite import calculate_raw_signals, compute_composite_scores
 from backend.app.backtest.engine import BacktestEngine
+from backend.app.core.utils import get_safe_float
 
 logger = logging.getLogger("nse_scanner.backtest_service")
 
-def get_safe_float(val, default=0.0):
-    if val is None or pd.isna(val):
-        return default
-    try:
-        return float(val)
-    except:
-        return default
+
 
 def run_backtest_background_task(job_id: str, score_threshold: float, time_stop_days: int, initial_capital: float):
     logger.info(f"Starting background backtest job {job_id}...")
@@ -80,11 +75,22 @@ def run_backtest_background_task(job_id: str, score_threshold: float, time_stop_
             candles_by_symbol[sym] = group.sort_values('date').reset_index(drop=True)
 
         # 4. Create market average series for RS index
-        market_avg = df_all.groupby('date')['close'].mean().reset_index()
+        # Return-based benchmark: mean of daily pct_change across all symbols
+        # Prevents high-priced stocks from dominating the benchmark
+        df_all_copy = df_all.copy()
+        df_all_copy['daily_ret'] = df_all_copy.groupby('symbol')['close'].pct_change()
+        market_avg = (
+            df_all_copy.groupby('date')['daily_ret']
+            .mean()
+            .reset_index()
+            .rename(columns={'daily_ret': 'market_ret'})
+        )
+        # Convert mean daily returns to a cumulative index starting at 1.0
         market_avg = market_avg.sort_values('date').reset_index(drop=True)
-        market_avg['return_20d'] = market_avg['close'].pct_change(20)
-        market_avg['return_50d'] = market_avg['close'].pct_change(50)
-        market_avg['return_100d'] = market_avg['close'].pct_change(100)
+        market_avg['market_close'] = (1 + market_avg['market_ret'].fillna(0)).cumprod()
+        market_avg['return_20d'] = market_avg['market_close'].pct_change(20)
+        market_avg['return_50d'] = market_avg['market_close'].pct_change(50)
+        market_avg['return_100d'] = market_avg['market_close'].pct_change(100)
         market_avg_map = market_avg.set_index('date').to_dict('index')
 
         # 5. Precompute breakout candle parameters
