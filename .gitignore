@@ -25,6 +25,8 @@ data/
 .env
 .env.*
 !.env.example
+!frontend/.env.development
+!frontend/.env.production
 
 # OS-specific files
 .DS_Store

@@ -91,6 +91,7 @@ def run_backtest_background_task(job_id: str, score_threshold: float, time_stop_
         market_avg['return_20d'] = market_avg['market_close'].pct_change(20)
         market_avg['return_50d'] = market_avg['market_close'].pct_change(50)
         market_avg['return_100d'] = market_avg['market_close'].pct_change(100)
+        market_avg['close'] = market_avg['market_close']  # alias for rs.py sector_df compatibility
         market_avg_map = market_avg.set_index('date').to_dict('index')
 
         # 5. Precompute breakout candle parameters

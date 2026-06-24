@@ -1,7 +1,6 @@
 import os
 import sys
 import datetime
-import sqlite3
 import pandas as pd
 import numpy as np
 from pathlib import Path
@@ -17,14 +16,7 @@ from backend.app.analytics.composite import calculate_raw_signals, compute_compo
 from backend.app.backtest.engine import BacktestEngine
 from backend.app.models.fundamental import CompanyFundamental
 from backend.app.models.candle import DailyCandle
-
-def get_safe_float(val, default=0.0):
-    if val is None or pd.isna(val):
-        return default
-    try:
-        return float(val)
-    except:
-        return default
+from backend.app.core.utils import get_safe_float
 
 def execute_single_backtest_run(
     df_dict: dict, 
@@ -183,34 +175,38 @@ def main():
     
     db = SessionLocal()
     
+    from backend.app.models.universe import UniverseStock
+    from backend.app.models.fundamental import CompanyFundamental
+
     # 1. Load active symbols
-    conn = sqlite3.connect(str(project_root / "data" / "scanner.db"))
-    cursor = conn.cursor()
-    cursor.execute("SELECT symbol FROM universe_stocks WHERE is_active = 1")
-    active_symbols = [r[0] for r in cursor.fetchall()]
+    active_stocks = db.query(UniverseStock).filter(UniverseStock.is_active == True).all()
+    active_symbols = [s.symbol for s in active_stocks]
     print(f"Loaded {len(active_symbols)} active universe symbols.")
     
     # 2. Load fundamentals
-    fundamentals_df = pd.read_sql_query("SELECT * FROM company_fundamentals", conn)
-    conn.close()
+    fundamentals_rows = db.query(CompanyFundamental).all()
     
     fundamentals_map = {}
-    for _, row in fundamentals_df.iterrows():
-        sym = row['symbol']
-        fundamentals_map[sym] = {
-            "sales_growth_qoq": get_safe_float(row.get('sales_growth_qoq')),
-            "sales_growth_yoy": get_safe_float(row.get('sales_growth_yoy')),
-            "profit_growth_yoy": get_safe_float(row.get('profit_growth_yoy')),
-            "roce": get_safe_float(row.get('roce')),
-            "roe": get_safe_float(row.get('roe')),
-            "debt_to_equity": get_safe_float(row.get('debt_to_equity'), 999.0),
-            "institutional_holding_qoq_change": get_safe_float(row.get('institutional_holding_qoq_change')),
-            "sector": row.get('sector', 'Unknown')
+    for f in fundamentals_rows:
+        fundamentals_map[f.symbol] = {
+            "sales_growth_qoq": get_safe_float(f.sales_growth_qoq),
+            "sales_growth_yoy": get_safe_float(f.sales_growth_yoy),
+            "profit_growth_yoy": get_safe_float(f.profit_growth_yoy),
+            "roce": get_safe_float(f.roce),
+            "roe": get_safe_float(f.roe),
+            "debt_to_equity": get_safe_float(f.debt_to_equity, 999.0),
+            "institutional_holding_qoq_change": get_safe_float(f.institutional_holding_qoq_change),
+            "sector": f.sector or "Unknown"
         }
         
-    # 3. Load all candles
+    # 3. Load candles with a 400-day window (252 trading days buffer)
+    # No indicator needs more than 200 bars — loading all history wastes RAM.
     print("Loading historical candles...")
-    candles_query = db.query(DailyCandle).filter(DailyCandle.symbol.in_(active_symbols)).order_by(DailyCandle.date.asc()).all()
+    lookback_start = datetime.date.today() - datetime.timedelta(days=400)
+    candles_query = db.query(DailyCandle).filter(
+        DailyCandle.symbol.in_(active_symbols),
+        DailyCandle.date >= lookback_start
+    ).order_by(DailyCandle.date.asc()).all()
     
     # Convert to DataFrame
     all_candles = []
@@ -232,14 +228,22 @@ def main():
     for sym, group in df_all.groupby('symbol'):
         candles_by_symbol[sym] = group.sort_values('date').reset_index(drop=True)
         
-    # 4. Create market average series for RS index
-    market_avg = df_all.groupby('date')['close'].mean().reset_index()
+    # 4. Create return-based market benchmark (consistent with services/scanner.py)
+    # Mean of daily pct_change prevents high-priced stocks from dominating the benchmark
+    df_all_copy = df_all.copy()
+    df_all_copy['daily_ret'] = df_all_copy.groupby('symbol')['close'].pct_change()
+    market_avg = (
+        df_all_copy.groupby('date')['daily_ret']
+        .mean()
+        .reset_index()
+        .rename(columns={'daily_ret': 'market_ret'})
+    )
     market_avg = market_avg.sort_values('date').reset_index(drop=True)
-    
-    # Precompute market returns
-    market_avg['return_20d'] = market_avg['close'].pct_change(20)
-    market_avg['return_50d'] = market_avg['close'].pct_change(50)
-    market_avg['return_100d'] = market_avg['close'].pct_change(100)
+    market_avg['market_close'] = (1 + market_avg['market_ret'].fillna(0)).cumprod()
+    market_avg['return_20d'] = market_avg['market_close'].pct_change(20)
+    market_avg['return_50d'] = market_avg['market_close'].pct_change(50)
+    market_avg['return_100d'] = market_avg['market_close'].pct_change(100)
+    market_avg['close'] = market_avg['market_close']  # alias for rs.py sector_df compatibility
     market_avg_map = market_avg.set_index('date').to_dict('index')
     
     # 5. Precompute indicator metrics for each symbol

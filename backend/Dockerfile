@@ -12,7 +12,6 @@ COPY requirements.txt /app/backend/requirements.txt
 RUN pip install --no-cache-dir -r /app/backend/requirements.txt
 
 # Copy all project files (since backend imports from 'backend.app...')
-COPY conftest.py /app/
 COPY backend/ /app/backend/
 
 ENV PYTHONPATH=/app

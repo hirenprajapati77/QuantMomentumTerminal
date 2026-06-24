@@ -1,3 +1,4 @@
+import os
 import asyncio
 import logging
 from contextlib import asynccontextmanager
@@ -44,11 +45,14 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:5173",
-        "http://localhost:3000",
-        "http://localhost:80",
-        "http://localhost",
-        "http://129.159.230.41",
+        origin for origin in [
+            "http://localhost:5173",
+            "http://localhost:3000",
+            "http://localhost:80",
+            "http://localhost",
+            os.getenv("ALLOWED_ORIGIN"),
+        ]
+        if origin
     ],
     allow_credentials=True,
     allow_methods=["*"],

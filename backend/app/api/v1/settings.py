@@ -11,6 +11,9 @@ from backend.app.config.settings import settings
 from backend.app.services.scanner import _get_redis
 from backend.scripts.login_fyers import generate_fyers_login_url
 from backend.app.core.crypto import encrypt_str
+import logging
+
+logger = logging.getLogger("nse_scanner.settings")
 
 router = APIRouter()
 
@@ -184,7 +187,8 @@ def update_fyers_config(payload: FyersConfigRequest, session: str = Depends(get_
         # Since settings uses @property to read dynamically, it updates immediately!
         return {"status": "success", "message": "Fyers configuration saved successfully."}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to save Fyers configuration: {str(e)}")
+        logger.error(f"Failed to save Fyers configuration: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to save Fyers configuration. Check server logs.")
 
 @router.get("/login-url")
 def get_settings_login_url(session: str = Depends(get_current_session)):

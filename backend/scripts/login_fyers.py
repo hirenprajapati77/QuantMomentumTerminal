@@ -10,6 +10,7 @@ if str(project_root) not in sys.path:
     sys.path.append(str(project_root))
 
 from backend.app.config.settings import settings
+from backend.app.core.crypto import encrypt_str
 
 def generate_fyers_login_url(app_id: str, redirect_uri: str) -> str:
     base_url = "https://api-t1.fyers.in/api/v3/generate-authcode"
@@ -95,10 +96,10 @@ def main():
     try:
         access_token = exchange_code_for_token(app_id, secret_id, auth_code)
         
-        # Save token to file
+        # Save token to file (encrypted at rest)
         token_file = settings.token_path
-        token_file.write_text(access_token)
-        print(f"\nSUCCESS: Access token successfully retrieved and saved to: {token_file}")
+        token_file.write_text(encrypt_str(access_token))
+        print(f"\nSUCCESS: Access token successfully retrieved and saved (encrypted) to: {token_file}")
         
     except Exception as e:
         print(f"\nERROR: Failed to retrieve token: {e}")

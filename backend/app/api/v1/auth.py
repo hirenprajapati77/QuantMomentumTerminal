@@ -1,5 +1,6 @@
 import time
 import os
+import logging
 import urllib.parse
 from pathlib import Path
 from fastapi import APIRouter, Query, HTTPException
@@ -7,6 +8,8 @@ from fastapi.responses import HTMLResponse
 from backend.app.config.settings import settings
 from backend.scripts.login_fyers import generate_fyers_login_url, exchange_code_for_token
 from backend.app.core.crypto import encrypt_str
+
+logger = logging.getLogger("nse_scanner.auth")
 
 router = APIRouter()
 
