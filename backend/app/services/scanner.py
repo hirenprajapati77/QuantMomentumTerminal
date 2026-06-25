@@ -15,31 +15,7 @@ from backend.app.core.utils import get_safe_float
 
 logger = logging.getLogger("nse_scanner.scanner")
 
-def compute_target3_from_values(
-    entry_price: Optional[float],
-    target1: Optional[float],
-    target2: Optional[float],
-    adr_pct: Optional[float],
-) -> Optional[float]:
-    """
-    Compute target3 from raw values (no DB query).
-    Used during scan to precompute and store target3 on the ScanResult row.
-    """
-    try:
-        if not entry_price or not target1 or not target2:
-            return None
-        t1_move = target1 - entry_price
-        t2_move = target2 - entry_price
-        if t1_move <= 0 or t2_move <= 0:
-            return None
-        extension = t2_move * 1.618
-        t3 = round(entry_price + extension, 2)
-        # Sanity cap: target3 must not exceed entry * 2.0
-        if t3 > entry_price * 2.0:
-            return None
-        return t3
-    except Exception:
-        return None
+
 
 # ---------------------------------------------------------------------------
 # Redis client — lazy-initialised, fails gracefully if Redis is unavailable
@@ -124,22 +100,13 @@ class ScannerService:
                         r.holding_days = 1
                     else:
                         r.entry_status = "Filled"
-                        count = db.query(DailyCandle).filter(
-                            DailyCandle.symbol == r.symbol,
-                            DailyCandle.date > r.date
-                        ).count()
-                        r.holding_days = count
+                        r.holding_days = 0
                         
                     r.entry = entry_price
                     r.stop = stop_price
                     r.target1 = entry_price * 1.10
                     r.target2 = entry_price * 1.20
-                    r.target3 = compute_target3_from_values(
-                        entry_price=entry_price,
-                        target1=entry_price * 1.10,
-                        target2=entry_price * 1.20,
-                        adr_pct=None
-                    )
+                    r.target3 = None
                     db.add(r)
                     logger.info(f"Resolved pending entry for {r.symbol} on {r.date}: entry={entry_price}, status={r.entry_status}")
             db.commit()
@@ -170,8 +137,72 @@ class ScannerService:
             counts_map = {(row.symbol, row.date): row.cnt for row in counts_raw}
             for r in filled_results:
                 r.holding_days = counts_map.get((r.symbol, r.date), 0)
+                # Compute and update trailing stop dynamically
+                if r.entry and r.target1:
+                    entry_date = r.date + datetime.timedelta(days=1)
+                    r.target3 = self.compute_dynamic_target3(db, r.symbol, entry_date, float(r.entry), float(r.target1))
                 db.add(r)
             db.commit()
+
+    def compute_dynamic_target3(
+        self,
+        db: Session,
+        symbol: str,
+        entry_date: datetime.date,
+        entry_price: float,
+        target1: float
+    ) -> Optional[float]:
+        """
+        Computes the trailing stop dynamically: max(EMA21, confirmed swing low)
+        active only after Target 1 has been hit.
+        """
+        try:
+            # 1. Fetch candles for symbol starting from 250 days before entry_date
+            # to have enough history for EMA/fractals calculation
+            lookback_start = entry_date - datetime.timedelta(days=250)
+            candles = db.query(DailyCandle).filter(
+                DailyCandle.symbol == symbol,
+                DailyCandle.date >= lookback_start
+            ).order_by(DailyCandle.symbol.asc(), DailyCandle.date.asc()).all()
+            
+            if not candles:
+                return None
+                
+            # Convert to DataFrame
+            df = pd.DataFrame([{
+                "date": c.date,
+                "high": float(c.high),
+                "low": float(c.low),
+                "close": float(c.close)
+            } for c in candles])
+            
+            # 2. Check if Target 1 was hit at or after entry_date
+            post_entry = df[df['date'] >= entry_date]
+            if post_entry.empty:
+                return None
+                
+            target1_hit = False
+            for _, row in post_entry.iterrows():
+                if row['high'] >= target1:
+                    target1_hit = True
+                    break
+                    
+            # 3. If Target 1 is hit, calculate trailing stop on the latest bar
+            if target1_hit:
+                df['ema21'] = df['close'].ewm(span=21, adjust=False).mean()
+                from backend.app.backtest.engine import precalculate_confirmed_swing_lows
+                df['confirmed_swing_low'] = precalculate_confirmed_swing_lows(df)
+                
+                latest_row = df.iloc[-1]
+                trail_level = float(latest_row['ema21'])
+                if not pd.isna(latest_row['confirmed_swing_low']):
+                    trail_level = max(trail_level, float(latest_row['confirmed_swing_low']))
+                return round(trail_level, 2)
+                
+            return None
+        except Exception as e:
+            logger.warning(f"Error computing dynamic trailing stop for {symbol}: {e}", exc_info=True)
+            return None
 
     def run_daily_scan(self, db: Session, target_date: datetime.date) -> list[ScanResult]:
         """
@@ -213,7 +244,7 @@ class ScannerService:
             DailyCandle.symbol.in_(active_symbols),
             DailyCandle.date >= lookback_start,
             DailyCandle.date <= target_date
-        ).order_by(DailyCandle.date.asc()).all()
+        ).order_by(DailyCandle.symbol.asc(), DailyCandle.date.asc()).all()
         
         if not candles_query:
             logger.warning(f"No candles found up to {target_date}.")
@@ -419,6 +450,17 @@ class ScannerService:
             trend_status = res["trend_status"]
             remarks = f"Breakout: Vol Ratio {vol_ratio:.1f}x, Close {close_pct*100:.0f}% of range. VCP Contractions: {contraction_count}. Trend: {trend_status}.{remarks_suffix}"
             
+            t3_val = None
+            if entry_status == "Filled":
+                entry_date = target_date + datetime.timedelta(days=1)
+                t3_val = self.compute_dynamic_target3(
+                    db,
+                    sym,
+                    entry_date,
+                    entry_price,
+                    entry_price * 1.10
+                )
+                
             scan_obj = ScanResult(
                 date=target_date,
                 symbol=sym,
@@ -439,12 +481,7 @@ class ScannerService:
                 stop=stop_price,
                 target1=entry_price * 1.10,
                 target2=entry_price * 1.20,
-                target3=compute_target3_from_values(
-                    entry_price=entry_price,
-                    target1=entry_price * 1.10,
-                    target2=entry_price * 1.20,
-                    adr_pct=None,
-                ),
+                target3=t3_val,
                 confidence=confidence,
                 remarks=remarks,
                 holding_days=holding_days

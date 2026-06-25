@@ -52,7 +52,7 @@ def run_backtest_background_task(job_id: str, score_threshold: float, time_stop_
             }
 
         # 3. Load all candles
-        candles_query = db.query(DailyCandle).filter(DailyCandle.symbol.in_(active_symbols)).order_by(DailyCandle.date.asc()).all()
+        candles_query = db.query(DailyCandle).filter(DailyCandle.symbol.in_(active_symbols)).order_by(DailyCandle.symbol.asc(), DailyCandle.date.asc()).all()
         if not candles_query:
             raise Exception("No candles found in database. Please run validation or ingestion first.")
             

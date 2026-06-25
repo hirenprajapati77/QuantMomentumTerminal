@@ -6,7 +6,7 @@ class CompanyFundamental(Base):
     __tablename__ = "company_fundamentals"
     __table_args__ = {'extend_existing': True}
 
-    symbol = Column(String(20), primary_key=True, index=True)
+    symbol = Column(String(20), primary_key=True)
     sector = Column(String(100), nullable=True)
     industry = Column(String(100), nullable=True)
     market_cap = Column(Numeric(precision=15, scale=2), nullable=True)  # in Cr

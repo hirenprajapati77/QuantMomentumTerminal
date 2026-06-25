@@ -206,7 +206,7 @@ def main():
     candles_query = db.query(DailyCandle).filter(
         DailyCandle.symbol.in_(active_symbols),
         DailyCandle.date >= lookback_start
-    ).order_by(DailyCandle.date.asc()).all()
+    ).order_by(DailyCandle.symbol.asc(), DailyCandle.date.asc()).all()
     
     # Convert to DataFrame
     all_candles = []

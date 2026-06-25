@@ -21,7 +21,7 @@ class ScanResult(Base):
     # Trade-Plan Persistence Fields
     sector = Column(String(50), nullable=True)
     entry = Column(Float, nullable=True)
-    entry_status = Column(String(15), nullable=True)  # Pending, Filled, Stopped Out
+    entry_status = Column(String(15), index=True, nullable=True)  # Pending, Filled, Stopped Out
     stop = Column(Float, nullable=True)
     target1 = Column(Float, nullable=True)
     target2 = Column(Float, nullable=True)

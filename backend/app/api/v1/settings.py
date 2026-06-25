@@ -136,7 +136,7 @@ def unlock_settings(payload: UnlockRequest, request: Request):
     if is_locked_out(client_ip):
         raise HTTPException(status_code=429, detail="Too many failed attempts. Try again later.")
         
-    if payload.pin == settings.SETTINGS_PIN:
+    if hmac.compare_digest(payload.pin.encode('utf-8'), settings.SETTINGS_PIN.encode('utf-8')):
         clear_failed_attempts(client_ip)
         token = generate_session_token(expiry_minutes=30)
         return {"token": token}

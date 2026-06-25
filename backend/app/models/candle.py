@@ -5,7 +5,7 @@ class DailyCandle(Base):
     __tablename__ = "daily_candles"
     __table_args__ = {'extend_existing': True}
 
-    symbol = Column(String(20), primary_key=True, index=True)
+    symbol = Column(String(20), primary_key=True)
     date = Column(Date, primary_key=True, index=True)
     open = Column(Numeric(precision=10, scale=2), nullable=False)
     high = Column(Numeric(precision=10, scale=2), nullable=False)
