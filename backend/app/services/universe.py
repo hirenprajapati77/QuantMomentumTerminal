@@ -44,15 +44,22 @@ class UniverseService:
             raise IngestionException(f"Failed to download Nifty 500 list. HTTP {response.status_code}")
 
     def check_listing_history_2y(self, symbol: str) -> bool:
-        """Verifies if the stock has at least 2 years of listed history using Fyers"""
-        # Query Fyers for a 5-day window exactly 2 years ago
+        """Verifies if the stock has at least 2 years of listed history using Fyers.
+        Requires a minimum density of trading days (>= 400 days) over the last 2 years.
+        """
         today = datetime.date.today()
         two_years_ago = today - datetime.timedelta(days=365 * 2)
-        start_check = two_years_ago - datetime.timedelta(days=7)
         
         try:
-            df = self.market_data_service.fetch_fyers_ohlcv(symbol, start_check, two_years_ago)
-            return not df.empty
+            df = self.market_data_service.fetch_fyers_ohlcv(symbol, two_years_ago, today)
+            if df.empty:
+                return False
+            
+            trading_days_count = len(df)
+            if trading_days_count < 400:
+                logger.warning(f"Stock {symbol} has only {trading_days_count} trading days in the last 2 years (expected >= 400).")
+                return False
+            return True
         except Exception as e:
             logger.warning(f"Error checking 2y history for {symbol}: {e}")
             return False

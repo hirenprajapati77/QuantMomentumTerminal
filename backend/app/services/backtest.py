@@ -126,6 +126,7 @@ def run_backtest_background_task(job_id: str, score_threshold: float, time_stop_
                 continue # Warmup
                 
             candidates = []
+            # Pre-filter avoids computing Trend/VCP/VDU/CPR/Fundamental for stocks that fail volume/breakout-shape, since those stocks can never satisfy entry_triggered regardless. WARNING: this means total_score and grade are NOT meaningful for any stock outside candidates — they default to an artificially low floor, not a true score. If future code ever uses total_score/grade from this loop for anything other than the entry_triggered check (e.g. near-miss reporting, grade distribution), this optimization must be removed or scores must be computed for the full universe first.
             for sym in active_symbols:
                 if sym not in df_dict:
                     continue
@@ -199,7 +200,8 @@ def run_backtest_background_task(job_id: str, score_threshold: float, time_stop_
                         (breakout_vol_ratio >= 2.0) and
                         trend_passed and
                         sector_passed and
-                        breakout_candles_passed
+                        breakout_candles_passed and
+                        res.get("passes_fundamental", True)
                     )
                     if entry_triggered:
                         signals_dict[sym].loc[date] = True
