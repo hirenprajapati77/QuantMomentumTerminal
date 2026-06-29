@@ -30,8 +30,8 @@ class MarketDataService:
             raise FyersTokenExpiredException("Fyers token file missing. Please run login_fyers.py.")
         
         # Check token modification time (if older than 24 hours, consider expired)
-        mtime = datetime.datetime.utcfromtimestamp(token_path.stat().st_mtime)
-        age = datetime.datetime.now() - mtime
+        mtime = datetime.datetime.fromtimestamp(token_path.stat().st_mtime, datetime.timezone.utc)
+        age = datetime.datetime.now(datetime.timezone.utc) - mtime
         if age > datetime.timedelta(hours=24):
             logger.critical("Fyers access token is older than 24 hours. Action required: Run Fyers login helper.")
             raise FyersTokenExpiredException("Fyers token expired. Please run login_fyers.py.")
@@ -162,6 +162,19 @@ class MarketDataService:
             if ohlcv_df.empty:
                 return 0
                 
+            # Batch fetch all existing DailyCandle records for this symbol in date range to avoid N+1 queries
+            existing_candles = db.query(DailyCandle).filter(
+                DailyCandle.symbol == symbol,
+                DailyCandle.date >= start_date,
+                DailyCandle.date <= end_date
+            ).all()
+            
+            # Map existing candles by YYYY-MM-DD string format to prevent type/tz mismatches
+            candle_map = {}
+            for c in existing_candles:
+                d_key = c.date.strftime("%Y-%m-%d") if hasattr(c.date, "strftime") else str(c.date)
+                candle_map[d_key] = c
+                
             records_count = 0
             # 2. Iterate through each day and enrich
             for _, row in ohlcv_df.iterrows():
@@ -192,11 +205,9 @@ class MarketDataService:
                     except Exception as ex:
                         logger.warning(f"Could not fetch delivery details for {symbol} on {date_val}: {ex}")
                 
-                # Create or update DB record
-                db_candle = db.query(DailyCandle).filter(
-                    DailyCandle.symbol == symbol,
-                    DailyCandle.date == date_val
-                ).first()
+                # Lookup DB record using normalized string key representation
+                d_key = date_val.strftime("%Y-%m-%d") if hasattr(date_val, "strftime") else str(date_val)
+                db_candle = candle_map.get(d_key)
                 
                 if not db_candle:
                     db_candle = DailyCandle(
@@ -212,6 +223,7 @@ class MarketDataService:
                         delivery_pct=delivery_pct
                     )
                     db.add(db_candle)
+                    candle_map[d_key] = db_candle
                 else:
                     db_candle.open = row["open"]
                     db_candle.high = row["high"]

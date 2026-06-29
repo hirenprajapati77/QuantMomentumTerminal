@@ -50,7 +50,8 @@ def trigger_scan(payload: Optional[ScanRequest] = None, db: Session = Depends(ge
     Manually trigger strategy scan scoring on the active universe for a given date.
     Saves scores and entry signals to the database.
     """
-    target_date = datetime.date.today()
+    from zoneinfo import ZoneInfo
+    target_date = datetime.datetime.now(ZoneInfo("Asia/Kolkata")).date()
     if payload and payload.date:
         try:
             target_date = datetime.datetime.strptime(payload.date, "%Y-%m-%d").date()
