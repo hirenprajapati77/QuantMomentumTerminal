@@ -75,7 +75,7 @@ class MarketDataService:
                         df = pd.DataFrame(candles, columns=["timestamp", "open", "high", "low", "close", "volume"])
                         # Convert epoch timestamps to datetime.date
                         # Fyers returns epoch timestamp in seconds at 00:00:00 UTC or market open
-                        df["date"] = df["timestamp"].apply(lambda t: datetime.datetime.utcfromtimestamp(t).date())
+                        df["date"] = df["timestamp"].apply(lambda t: datetime.datetime.fromtimestamp(t, datetime.timezone.utc).date())
                         df = df.drop(columns=["timestamp"])
                         return df
                     elif data.get("s") == "no_data":
@@ -103,7 +103,7 @@ class MarketDataService:
         chunks = []
         curr_start = start_date
         while curr_start <= end_date:
-            curr_end = min(curr_start + datetime.timedelta(days=365), end_date)
+            curr_end = min(curr_start + datetime.timedelta(days=364), end_date)
             chunks.append((curr_start, curr_end))
             curr_start = curr_end + datetime.timedelta(days=1)
             
