@@ -146,24 +146,50 @@ def test_vcp_valid_4_contractions_elite():
 
 def test_vcp_valid_4_contractions_looser():
     # Contractions:
-    # 1. 150.0 -> 80.0 (70.0 size)
-    # 2. 140.0 -> 90.0 (50.0 size) -> ratio = 50.0 / 70.0 = 0.714 (<= 0.80 but > 0.70)
-    # 3. 130.0 -> 107.0 (23.0 size) -> ratio = 23.0 / 35.0 = 0.657 (<= 0.70)
-    # 4. 127.55 -> 108.0 (19.55 size) -> ratio = 19.55 / 23.0 = 0.85 (<= 1.0)
-    # Because at least one ratio is > 0.70, this does not qualify for Elite (20 pts).
-    # Previously, it qualified for the invented High tier (16 pts).
+    # 1. High (154.91) to Low (75.0) -> 51.58% contraction
+    # 2. High (140.0) to Low (86.8) -> 38.0% contraction (ratio: 0.737)
+    # 3. High (130.0) to Low (92.3) -> 29.0% contraction (ratio: 0.763)
+    # 4. High (125.0) to Low (97.02) -> 22.38% contraction (ratio: 0.772)
+    # All ratios are <= 0.80 but exceed 0.70.
+    # Previously, this qualified for the invented High tier (16 pts).
     # Now, it must correctly fall through to Looser (5 pts).
     swing_points = [
         (10, 'high', 150.0),
-        (13, 'low', 80.0),
+        (13, 'low', 75.0),
         (16, 'high', 140.0),
-        (19, 'low', 90.0),
+        (19, 'low', 86.8),
         (22, 'high', 130.0),
-        (25, 'low', 107.0),
-        (28, 'high', 127.55),
-        (31, 'low', 108.0)
+        (25, 'low', 92.3),
+        (28, 'high', 125.0),
+        (31, 'low', 97.5)
     ]
     df = create_synthetic_vcp_df(swing_points, first_avg_range=8.0, final_avg_range=1.5)
+    
+    # Adjust daily ranges to shape ATR such that 3-contraction and 2-contraction
+    # subsets fail the ATR decline check, forcing the engine to select the 4-contraction candidate.
+    for idx in range(len(df)):
+        close_val = df.loc[idx, 'close']
+        if idx >= 20 and idx <= 32:
+            df.loc[idx, 'high'] = close_val * 1.04
+            df.loc[idx, 'low'] = close_val * 0.96
+        elif idx >= 33 and idx <= 44:
+            df.loc[idx, 'high'] = close_val * 1.006
+            df.loc[idx, 'low'] = close_val * 0.994
+        elif idx >= 45:
+            df.loc[idx, 'high'] = close_val * 1.011
+            df.loc[idx, 'low'] = close_val * 0.989
+
+    # Keep swing points exact
+    offset = 20
+    for s_idx, s_type, s_price in swing_points:
+        idx = s_idx + offset
+        df.loc[idx, 'close'] = s_price
+        df.loc[idx, 'open'] = s_price
+        if s_type == 'high':
+            df.loc[idx, 'high'] = s_price
+        else:
+            df.loc[idx, 'low'] = s_price
+
     res = calculate_vcp_score(df)
     
     assert res["status"] == "passed"
