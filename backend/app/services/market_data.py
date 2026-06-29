@@ -38,8 +38,8 @@ class MarketDataService:
             
         return decrypt_str(token_path.read_text().strip())
 
-    def fetch_fyers_ohlcv(self, symbol: str, start_date: datetime.date, end_date: datetime.date) -> pd.DataFrame:
-        """Fetches OHLCV candles from Fyers History API with retries and exponential backoff"""
+    def _fetch_fyers_ohlcv_chunk(self, symbol: str, start_date: datetime.date, end_date: datetime.date) -> pd.DataFrame:
+        """Helper to fetch a single sub-365 day segment of OHLCV candles from Fyers History API"""
         token = self._get_fyers_token()
         fyers_symbol = f"NSE:{symbol}-EQ"
         
@@ -61,7 +61,7 @@ class MarketDataService:
         
         for attempt in range(1, max_retries + 1):
             try:
-                logger.debug(f"Fetching Fyers OHLCV for {symbol} (attempt {attempt})...")
+                logger.debug(f"Fetching Fyers OHLCV chunk for {symbol} from {start_date} to {end_date} (attempt {attempt})...")
                 response = requests.get(url, params=params, headers=headers, timeout=15)
                 
                 if response.status_code == 401:
@@ -94,6 +94,30 @@ class MarketDataService:
                 backoff *= 2
                 
         raise IngestionException(f"Failed to fetch Fyers OHLCV for {symbol} after {max_retries} attempts.")
+
+    def fetch_fyers_ohlcv(self, symbol: str, start_date: datetime.date, end_date: datetime.date) -> pd.DataFrame:
+        """Fetches OHLCV candles from Fyers History API, automatically splitting into sub-365 day chunks if needed"""
+        if start_date > end_date:
+            raise ValueError(f"start_date {start_date} cannot be after end_date {end_date}")
+            
+        chunks = []
+        curr_start = start_date
+        while curr_start <= end_date:
+            curr_end = min(curr_start + datetime.timedelta(days=365), end_date)
+            chunks.append((curr_start, curr_end))
+            curr_start = curr_end + datetime.timedelta(days=1)
+            
+        dfs = []
+        for s_date, e_date in chunks:
+            df_chunk = self._fetch_fyers_ohlcv_chunk(symbol, s_date, e_date)
+            if not df_chunk.empty:
+                dfs.append(df_chunk)
+                
+        if not dfs:
+            return pd.DataFrame(columns=["date", "open", "high", "low", "close", "volume"])
+            
+        combined_df = pd.concat(dfs).drop_duplicates(subset=["date"]).sort_values("date").reset_index(drop=True)
+        return combined_df
 
     def download_nse_bhavcopy(self, date: datetime.date) -> pd.DataFrame:
         """Downloads and parses security-wise daily bhavcopy from NSE archives"""
