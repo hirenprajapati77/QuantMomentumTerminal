@@ -119,11 +119,12 @@ def test_composite_scoring_and_entry_triggers():
 
 
 def test_fundamental_gate_blocks_entry():
-    # Setup a stock that passes all technical and sector checks,
+    # Setup a 5-stock universe to ensure SYM_1 ranks in the top sector and top RS (scoring 100 technically),
     # but fails the fundamental gate (passes_gate = False).
-    # Its grade should be capped to Watch, and entry_triggered must be False.
+    # Under the old buggy code, entry_triggered would be True.
+    # After the fix, entry_triggered must be False and grade capped at Watch.
     universe_signals = {
-        "SYM_1": { # Top sector, top RS, passes all technicals
+        "SYM_1": { # Top sector, top RS, passes all technicals, but fails fundamental gate
             "sector": "SEC_1",
             "return_20d": 0.50,
             "trend": {"score": 15, "status": "passed"},
@@ -133,7 +134,55 @@ def test_fundamental_gate_blocks_entry():
             "volume": {"score": 10, "ratio": 3.0},
             "breakout": {"score": 10, "close_pct_of_range": 0.95, "upper_wick_pct": 0.02},
             "cpr": {"score": 5},
-            "fundamental": {"score": 10, "passes_gate": False} # Fails gate
+            "fundamental": {"score": 0, "passes_gate": False} # Fails gate (score = 0 in production when gate fails)
+        },
+        "SYM_2": {
+            "sector": "SEC_2",
+            "return_20d": 0.30,
+            "trend": {"score": 15, "status": "passed"},
+            "vcp": {"score": 20, "status": "passed", "start_idx": 10, "end_idx": 40},
+            "vdu": {"score": 15},
+            "rs_raw": {"rel_20": 0.30, "rel_50": 0.30, "rel_100": 0.30},
+            "volume": {"score": 10, "ratio": 2.5},
+            "breakout": {"score": 10, "close_pct_of_range": 0.90, "upper_wick_pct": 0.05},
+            "cpr": {"score": 5},
+            "fundamental": {"score": 10, "passes_gate": True}
+        },
+        "SYM_3": {
+            "sector": "SEC_3",
+            "return_20d": 0.20,
+            "trend": {"score": 15, "status": "passed"},
+            "vcp": {"score": 20, "status": "passed", "start_idx": 10, "end_idx": 40},
+            "vdu": {"score": 15},
+            "rs_raw": {"rel_20": 0.20, "rel_50": 0.20, "rel_100": 0.20},
+            "volume": {"score": 10, "ratio": 2.5},
+            "breakout": {"score": 10, "close_pct_of_range": 0.90, "upper_wick_pct": 0.05},
+            "cpr": {"score": 5},
+            "fundamental": {"score": 10, "passes_gate": True}
+        },
+        "SYM_4": {
+            "sector": "SEC_4",
+            "return_20d": 0.10,
+            "trend": {"score": 15, "status": "passed"},
+            "vcp": {"score": 20, "status": "passed", "start_idx": 10, "end_idx": 40},
+            "vdu": {"score": 15},
+            "rs_raw": {"rel_20": 0.10, "rel_50": 0.10, "rel_100": 0.10},
+            "volume": {"score": 10, "ratio": 2.5},
+            "breakout": {"score": 10, "close_pct_of_range": 0.90, "upper_wick_pct": 0.05},
+            "cpr": {"score": 5},
+            "fundamental": {"score": 10, "passes_gate": True}
+        },
+        "SYM_5": {
+            "sector": "SEC_5",
+            "return_20d": 0.05,
+            "trend": {"score": 15, "status": "passed"},
+            "vcp": {"score": 20, "status": "passed", "start_idx": 10, "end_idx": 40},
+            "vdu": {"score": 15},
+            "rs_raw": {"rel_20": 0.05, "rel_50": 0.05, "rel_100": 0.05},
+            "volume": {"score": 10, "ratio": 2.5},
+            "breakout": {"score": 10, "close_pct_of_range": 0.90, "upper_wick_pct": 0.05},
+            "cpr": {"score": 5},
+            "fundamental": {"score": 10, "passes_gate": True}
         }
     }
     

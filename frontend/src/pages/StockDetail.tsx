@@ -76,8 +76,8 @@ export default function StockDetail({ symbol, triggerDate, onBack }: Props) {
 
     // If we have a scan result, draw entry, stop, and target levels
     if (scanResult) {
-      const dateStr = scanResult.date;
-      const triggerCandle = candles.find(c => c.date === dateStr);
+      const dateStr = scanResult.date.substring(0, 10);
+      const triggerCandle = candles.find(c => c.date.substring(0, 10) === dateStr);
       
       const entryPrice = scanResult.entry || (triggerCandle ? triggerCandle.close : closes[closes.length - 1]);
       const stopLoss = scanResult.stop || entryPrice * 0.94;
@@ -153,7 +153,8 @@ export default function StockDetail({ symbol, triggerDate, onBack }: Props) {
   let target2 = 0;
   
   if (scanResult && candles.length > 0) {
-    const triggerCandle = candles.find(c => c.date === scanResult.date);
+    const dateStr = scanResult.date.substring(0, 10);
+    const triggerCandle = candles.find(c => c.date.substring(0, 10) === dateStr);
     const fallbackBasePrice = triggerCandle ? triggerCandle.close : candles[candles.length - 1].close;
     entryPrice = scanResult.entry || fallbackBasePrice;
     stopLoss = scanResult.stop || entryPrice * 0.94;
