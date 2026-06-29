@@ -146,6 +146,21 @@ export default function StockDetail({ symbol, triggerDate, onBack }: Props) {
     }
   };
 
+  // Compute fallback values for render using scanResult's date-specific close price
+  let entryPrice = 0;
+  let stopLoss = 0;
+  let target1 = 0;
+  let target2 = 0;
+  
+  if (scanResult && candles.length > 0) {
+    const triggerCandle = candles.find(c => c.date === scanResult.date);
+    const fallbackBasePrice = triggerCandle ? triggerCandle.close : candles[candles.length - 1].close;
+    entryPrice = scanResult.entry || fallbackBasePrice;
+    stopLoss = scanResult.stop || entryPrice * 0.94;
+    target1 = scanResult.target1 || entryPrice * 1.10;
+    target2 = scanResult.target2 || entryPrice * 1.20;
+  }
+
   return (
     <div>
       <div className="page-header">
@@ -177,19 +192,19 @@ export default function StockDetail({ symbol, triggerDate, onBack }: Props) {
               <div style={{ display: 'flex', gap: '15px', marginTop: '16px', fontSize: '12px', justifyContent: 'center', flexWrap: 'wrap' }}>
                 <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <span style={{ display: 'inline-block', width: '12px', height: '2px', backgroundColor: '#e2e8f0', borderStyle: 'dashed' }}></span>
-                  Entry (₹{(scanResult.entry || 0).toFixed(2)}) [{scanResult.entry_status || 'Pending'}]
+                  Entry (₹{entryPrice.toFixed(2)}) [{scanResult.entry_status || 'Pending'}]
                 </span>
                 <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <span style={{ display: 'inline-block', width: '12px', height: '2px', backgroundColor: '#10b981', borderStyle: 'dashed' }}></span>
-                  Target 1 (₹{(scanResult.target1 || 0).toFixed(2)})
+                  Target 1 (₹{target1.toFixed(2)})
                 </span>
                 <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <span style={{ display: 'inline-block', width: '12px', height: '2px', backgroundColor: '#38bdf8', borderStyle: 'dashed' }}></span>
-                  Target 2 (₹{(scanResult.target2 || 0).toFixed(2)})
+                  Target 2 (₹{target2.toFixed(2)})
                 </span>
                 <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <span style={{ display: 'inline-block', width: '12px', height: '2px', backgroundColor: '#f43f5e', borderStyle: 'dashed' }}></span>
-                  Stop Loss (₹{(scanResult.stop || 0).toFixed(2)})
+                  Stop Loss (₹{stopLoss.toFixed(2)})
                 </span>
                 {scanResult.target3 && (
                   <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>

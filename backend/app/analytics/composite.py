@@ -163,7 +163,8 @@ def compute_composite_scores(universe_signals: dict[str, dict]) -> dict[str, dic
             (breakout_vol_ratio >= 2.0) and
             trend_passed and
             sector_passed and
-            breakout_candles_passed
+            breakout_candles_passed and
+            passes_fundamental_gate
         )
 
         results[sym] = {

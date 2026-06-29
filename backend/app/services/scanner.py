@@ -413,35 +413,53 @@ class ScannerService:
             ref_close = float(t_candle.close) if t_candle else 0.0
             
             remarks_suffix = ""
-            if next_candle:
-                entry_price = float(next_candle.open)
-                stop_price = entry_price * 0.94
-                if float(next_candle.low) <= stop_price:
-                    entry_status = "Stopped Out"
-                    remarks_suffix = " [Stopped Out on Entry Bar]"
-                    holding_days = 1
-                else:
-                    entry_status = "Filled"
-                    holding_days = db.query(DailyCandle).filter(
-                        DailyCandle.symbol == sym,
-                        DailyCandle.date > target_date
-                    ).count()
-            else:
-                entry_price = ref_close
-                stop_price = entry_price * 0.94
-                entry_status = "Pending"
-                holding_days = 0
-            
-            # Confidence based on grade
+            entry_price = None
+            stop_price = None
+            t3_val = None
+            entry_status = None
+            holding_days = 0
+            confidence = "None"
             grade = res["grade"]
-            if grade in ["Elite", "A+"]:
-                confidence = "High"
-            elif grade == "A":
-                confidence = "Medium"
-            elif grade == "Watch":
-                confidence = "Low"
-            else:
-                confidence = "None"
+            
+            if res["entry_triggered"]:
+                if next_candle:
+                    entry_price = float(next_candle.open)
+                    stop_price = entry_price * 0.94
+                    if float(next_candle.low) <= stop_price:
+                        entry_status = "Stopped Out"
+                        remarks_suffix = " [Stopped Out on Entry Bar]"
+                        holding_days = 1
+                    else:
+                        entry_status = "Filled"
+                        holding_days = db.query(DailyCandle).filter(
+                            DailyCandle.symbol == sym,
+                            DailyCandle.date > target_date
+                        ).count()
+                else:
+                    entry_price = ref_close
+                    stop_price = entry_price * 0.94
+                    entry_status = "Pending"
+                    holding_days = 0
+                
+                # Confidence based on grade
+                if grade in ["Elite", "A+"]:
+                    confidence = "High"
+                elif grade == "A":
+                    confidence = "Medium"
+                elif grade == "Watch":
+                    confidence = "Low"
+                else:
+                    confidence = "None"
+                    
+                if entry_status == "Filled" and entry_price:
+                    entry_date = target_date + datetime.timedelta(days=1)
+                    t3_val = self.compute_dynamic_target3(
+                        db,
+                        sym,
+                        entry_date,
+                        entry_price,
+                        entry_price * 1.10
+                    )
                 
             # Construct remarks using VCP contraction count
             contraction_count = day_signals.get(sym, {}).get("vcp", {}).get("contraction_count", 0)
@@ -450,17 +468,6 @@ class ScannerService:
             trend_status = res["trend_status"]
             remarks = f"Breakout: Vol Ratio {vol_ratio:.1f}x, Close {close_pct*100:.0f}% of range. VCP Contractions: {contraction_count}. Trend: {trend_status}.{remarks_suffix}"
             
-            t3_val = None
-            if entry_status == "Filled":
-                entry_date = target_date + datetime.timedelta(days=1)
-                t3_val = self.compute_dynamic_target3(
-                    db,
-                    sym,
-                    entry_date,
-                    entry_price,
-                    entry_price * 1.10
-                )
-                
             scan_obj = ScanResult(
                 date=target_date,
                 symbol=sym,
@@ -479,8 +486,8 @@ class ScannerService:
                 entry=entry_price,
                 entry_status=entry_status,
                 stop=stop_price,
-                target1=entry_price * 1.10,
-                target2=entry_price * 1.20,
+                target1=entry_price * 1.10 if entry_price is not None else None,
+                target2=entry_price * 1.20 if entry_price is not None else None,
                 target3=t3_val,
                 confidence=confidence,
                 remarks=remarks,
