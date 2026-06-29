@@ -146,7 +146,7 @@ def test_vcp_valid_4_contractions_elite():
 
 def test_vcp_valid_4_contractions_looser():
     # Contractions:
-    # 1. High (154.91) to Low (75.0) -> 51.58% contraction
+    # 1. High (154.82 at idx 29) to Low (75.0) -> 51.56% contraction
     # 2. High (140.0) to Low (86.8) -> 38.0% contraction (ratio: 0.737)
     # 3. High (130.0) to Low (92.3) -> 29.0% contraction (ratio: 0.763)
     # 4. High (125.0) to Low (97.02) -> 22.38% contraction (ratio: 0.772)
@@ -191,6 +191,8 @@ def test_vcp_valid_4_contractions_looser():
             df.loc[idx, 'low'] = s_price
 
     res = calculate_vcp_score(df)
+    
+    print("\n[DEBUG] res:", res)
     
     assert res["status"] == "passed"
     assert res["contraction_count"] == 4
