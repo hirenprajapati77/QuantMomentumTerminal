@@ -159,9 +159,6 @@ def calculate_vcp_score(df: pd.DataFrame) -> dict:
             if all(r <= 0.70 for r in ratios):
                 score = 20
                 quality = "Elite"
-            elif all(r <= 0.80 for r in ratios):
-                score = 16
-                quality = "High"
             else:
                 score = 5
                 quality = "Looser"

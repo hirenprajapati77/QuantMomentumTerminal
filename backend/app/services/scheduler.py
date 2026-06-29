@@ -1,6 +1,7 @@
 import asyncio
 import datetime
 import logging
+import time
 from zoneinfo import ZoneInfo
 from sqlalchemy.orm import Session
 from backend.app.storage.database import SessionLocal
@@ -16,12 +17,12 @@ def get_ist_now() -> datetime.datetime:
     """
     return datetime.datetime.now(ZoneInfo("Asia/Kolkata"))
 
-async def run_daily_ingestion_and_scan(target_date: datetime.date):
+def sync_daily_ingestion_and_scan(target_date: datetime.date):
     """
-    Downloads Bhavcopy, enriches OHLCV, and runs scanner for target_date.
-    Includes retries with a 15-minute delay if Bhavcopy download fails (e.g. if NSE is late).
+    Synchronous implementation of daily ingestion and scan.
+    Runs inside a worker thread via asyncio.to_thread to avoid blocking event loop.
     """
-    logger.info(f"Starting daily ingestion and scan worker for date: {target_date}")
+    logger.info(f"Starting synchronous daily ingestion and scan worker for date: {target_date}")
     market_data_service = MarketDataService()
     scanner_service = ScannerService()
     
@@ -52,7 +53,7 @@ async def run_daily_ingestion_and_scan(target_date: datetime.date):
                 
             if attempt < 4:
                 logger.info("Waiting 15 minutes before retrying...")
-                await asyncio.sleep(15 * 60) # 15 minutes
+                time.sleep(15 * 60) # 15 minutes (synchronous sleep in worker thread)
                 
         if bhav_df is None or bhav_df.empty:
             logger.error(f"Failed to fetch Bhavcopy for {target_date} after 4 attempts. Proceeding with OHLCV only.")
@@ -78,6 +79,13 @@ async def run_daily_ingestion_and_scan(target_date: datetime.date):
         logger.error(f"Scheduler worker encountered an error: {e}", exc_info=True)
     finally:
         db.close()
+
+async def run_daily_ingestion_and_scan(target_date: datetime.date):
+    """
+    Downloads Bhavcopy, enriches OHLCV, and runs scanner for target_date.
+    Delegates to threadpool using asyncio.to_thread to avoid blocking event loop.
+    """
+    await asyncio.to_thread(sync_daily_ingestion_and_scan, target_date)
 
 async def start_scheduler():
     """

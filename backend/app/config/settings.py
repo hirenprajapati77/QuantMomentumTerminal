@@ -64,14 +64,24 @@ settings = Settings()
 # Ensure data directory exists
 settings.DATA_DIR.mkdir(parents=True, exist_ok=True)
 
+import logging
+logger = logging.getLogger("nse_scanner.config")
+
 # Warn loudly if insecure defaults are in use
 if settings.SETTINGS_PIN == "1234":
+    logger.warning("SECURITY WARNING: SETTINGS_PIN is using the default '1234'. Set SETTINGS_PIN env var before production deployment.")
     warnings.warn(
         "SECURITY: SETTINGS_PIN is using the default '1234'. Set SETTINGS_PIN env var before production deployment.",
         stacklevel=1
     )
 if settings.SECRET_KEY == "supersecretkey":
+    logger.critical("SECURITY CRITICAL: SECRET_KEY is using the default value. This allows session tokens to be forged!")
     warnings.warn(
         "SECURITY: SECRET_KEY is using the default value. Set SECRET_KEY env var before production deployment.",
         stacklevel=1
     )
+    # Refuse startup in production (if Database URL is PostgreSQL and not on localhost/127.0.0.1)
+    db_url = settings.DATABASE_URL.lower()
+    is_local_db = "localhost" in db_url or "127.0.0.1" in db_url or "sqlite" in db_url
+    if not is_local_db:
+        raise ValueError("CRITICAL SECURITY ERROR: Default SECRET_KEY is not allowed in production contexts. Please configure the SECRET_KEY environment variable.")

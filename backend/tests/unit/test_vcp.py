@@ -144,6 +144,33 @@ def test_vcp_valid_4_contractions_elite():
     assert res["contraction_ratios"][1] == pytest.approx(0.6915, abs=1e-3)
     assert res["contraction_ratios"][2] == pytest.approx(0.5362, abs=1e-3)
 
+def test_vcp_valid_4_contractions_looser():
+    # Contractions:
+    # 1. 150.0 -> 80.0 (70.0 size)
+    # 2. 140.0 -> 90.0 (50.0 size) -> ratio = 50.0 / 70.0 = 0.714 (<= 0.80 but > 0.70)
+    # 3. 130.0 -> 107.0 (23.0 size) -> ratio = 23.0 / 35.0 = 0.657 (<= 0.70)
+    # 4. 127.55 -> 108.0 (19.55 size) -> ratio = 19.55 / 23.0 = 0.85 (<= 1.0)
+    # Because at least one ratio is > 0.70, this does not qualify for Elite (20 pts).
+    # Previously, it qualified for the invented High tier (16 pts).
+    # Now, it must correctly fall through to Looser (5 pts).
+    swing_points = [
+        (10, 'high', 150.0),
+        (13, 'low', 80.0),
+        (16, 'high', 140.0),
+        (19, 'low', 90.0),
+        (22, 'high', 130.0),
+        (25, 'low', 107.0),
+        (28, 'high', 127.55),
+        (31, 'low', 108.0)
+    ]
+    df = create_synthetic_vcp_df(swing_points, first_avg_range=8.0, final_avg_range=1.5)
+    res = calculate_vcp_score(df)
+    
+    assert res["status"] == "passed"
+    assert res["contraction_count"] == 4
+    assert res["score"] == 5  # Verified correction: formerly 16, now 5
+    assert res["quality"] == "Looser"
+
 def test_vcp_higher_lows_failure():
     # Swing lows: 70.0 -> 76.0 -> 70.0 (Failure! Low 3 < Low 2)
     swing_points = [
