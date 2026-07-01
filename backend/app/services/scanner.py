@@ -497,5 +497,20 @@ class ScannerService:
             scan_results.append(scan_obj)
             
         db.commit()
+        
+        # Save actual execution timestamp persistently
+        try:
+            import os
+            import json
+            import time
+            data_dir = os.getenv("DATA_DIR", "./data")
+            os.makedirs(data_dir, exist_ok=True)
+            last_run_path = os.path.join(data_dir, "last_run.json")
+            with open(last_run_path, "w") as f:
+                json.dump({"timestamp": int(time.time())}, f)
+            logger.info(f"Saved scan execution timestamp to {last_run_path}")
+        except Exception as e:
+            logger.warning(f"Failed to save scan execution timestamp: {e}")
+
         logger.info(f"Daily scan for {target_date} finished. Saved {len(scan_results)} records.")
         return scan_results

@@ -206,6 +206,22 @@ def get_last_run(db: Session = Depends(get_db)):
     """
     Get the timestamp of the last successful daily scan execution.
     """
+    import os
+    import json
+    
+    # Try reading the actual execution timestamp first
+    data_dir = os.getenv("DATA_DIR", "./data")
+    last_run_path = os.path.join(data_dir, "last_run.json")
+    if os.path.exists(last_run_path):
+        try:
+            with open(last_run_path, "r") as f:
+                data = json.load(f)
+                if "timestamp" in data:
+                    return {"timestamp": data["timestamp"]}
+        except Exception:
+            pass
+            
+    # Fallback to database max_date combining
     from sqlalchemy import func
     import datetime
     
