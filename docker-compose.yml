@@ -63,7 +63,7 @@ services:
     container_name: nse_scanner_frontend
     restart: always
     ports:
-      - "80:80"
+      - "5000:80"
     depends_on:
       - backend
 
