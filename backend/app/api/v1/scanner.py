@@ -1,7 +1,6 @@
 import datetime
 from typing import Optional, List
-from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.orm import Session
+from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
 from pydantic import BaseModel, Field
 from backend.app.storage.database import get_db
 from backend.app.models.scan_result import ScanResult
@@ -10,6 +9,13 @@ from backend.app.services.scanner import ScannerService
 
 router = APIRouter()
 scanner_service = ScannerService()
+
+class ScanTriggerResponse(BaseModel):
+    status: str
+    message: str
+
+class ScannerStatusResponse(BaseModel):
+    is_running: bool
 
 
 
@@ -44,11 +50,22 @@ class ScanResultSchema(BaseModel):
     class Config:
         orm_mode = True
 
-@router.post("/scan", response_model=List[ScanResultSchema])
-def trigger_scan(payload: Optional[ScanRequest] = None, db: Session = Depends(get_db)):
+def run_scan_in_background(target_date: datetime.date):
+    from backend.app.storage.database import SessionLocal
+    import logging
+    logger = logging.getLogger("nse_scanner.api_background")
+    db_bg = SessionLocal()
+    try:
+        scanner_service.run_daily_scan(db_bg, target_date)
+    except Exception as e:
+        logger.error(f"Error executing background scan for {target_date}: {e}", exc_info=True)
+    finally:
+        db_bg.close()
+
+@router.post("/scan", response_model=ScanTriggerResponse)
+def trigger_scan(background_tasks: BackgroundTasks, payload: Optional[ScanRequest] = None):
     """
-    Manually trigger strategy scan scoring on the active universe for a given date.
-    Saves scores and entry signals to the database.
+    Asynchronously trigger strategy scan scoring on the active universe for a given date in the background.
     """
     from zoneinfo import ZoneInfo
     target_date = datetime.datetime.now(ZoneInfo("Asia/Kolkata")).date()
@@ -58,42 +75,20 @@ def trigger_scan(payload: Optional[ScanRequest] = None, db: Session = Depends(ge
         except ValueError:
             raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD.")
     
-    try:
-        results = scanner_service.run_daily_scan(db, target_date)
+    from backend.app.services.scanner import is_scanner_running
+    if is_scanner_running():
+        raise HTTPException(status_code=409, detail="A scan is already in progress.")
         
-        # Serialize database objects for response
-        response = []
-        for r in results:
-            response.append({
-                "symbol": r.symbol,
-                "date": r.date.strftime("%Y-%m-%d"),
-                "technical_score": r.technical_score,
-                "fundamental_score": r.fundamental_score,
-                "final_score": r.final_score,
-                "grade": r.grade,
-                "entry_triggered": r.entry_triggered,
-                "breakout_vol_ratio": r.breakout_vol_ratio,
-                "close_pct_of_range": r.close_pct_of_range,
-                "upper_wick_pct": r.upper_wick_pct,
-                "passes_fundamental": r.passes_fundamental,
-                
-                # Persistence additions
-                "sector": r.sector,
-                "entry": r.entry,
-                "entry_status": r.entry_status,
-                "stop": r.stop,
-                "target1": r.target1,
-                "target2": r.target2,
-                "target3": r.target3,
-                "confidence": r.confidence,
-                "remarks": r.remarks,
-                "holding_days": r.holding_days
-            })
-        return response
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Failed to execute scan: {str(e)}")
+    background_tasks.add_task(run_scan_in_background, target_date)
+    return {"status": "scanning", "message": "Scan triggered successfully in the background."}
+
+@router.get("/status", response_model=ScannerStatusResponse)
+def get_scanner_status():
+    """
+    Get the current execution status of the background scanner.
+    """
+    from backend.app.services.scanner import is_scanner_running
+    return {"is_running": is_scanner_running()}
 
 @router.get("/results", response_model=List[ScanResultSchema])
 def get_scan_results(

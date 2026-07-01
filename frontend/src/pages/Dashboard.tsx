@@ -69,16 +69,33 @@ export default function Dashboard({ onNavigate }: Props) {
     loadData();
   }, []);
 
+  const pollScanStatus = async () => {
+    const pollInterval = setInterval(async () => {
+      try {
+        const res = await apiClient.get('/scanner/status');
+        if (res && !res.is_running) {
+          clearInterval(pollInterval);
+          setScanMessage('Scan completed successfully!');
+          setLoadingScan(false);
+          loadData();
+        }
+      } catch (err) {
+        clearInterval(pollInterval);
+        setScanMessage('Failed to verify scan status.');
+        setLoadingScan(false);
+      }
+    }, 3000);
+  };
+
   const handleManualScan = async () => {
     setLoadingScan(true);
     setScanMessage('Scanning in progress...');
     try {
       await apiClient.post('/scanner/scan', {});
-      setScanMessage('Scan completed successfully!');
-      loadData();
+      // Begin polling the background task status
+      pollScanStatus();
     } catch (e: any) {
       setScanMessage(`Scan failed: ${e.message}`);
-    } finally {
       setLoadingScan(false);
     }
   };
