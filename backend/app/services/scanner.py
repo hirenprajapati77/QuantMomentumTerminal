@@ -217,8 +217,7 @@ class ScannerService:
 
     def run_daily_scan(self, db: Session, target_date: datetime.date) -> list[ScanResult]:
         """
-        Executes composite strategy scoring across the entire active universe for target_date.
-        Saves results to the database and returns them.
+        Wrapper that handles scanner execution flags and calls the implementation.
         """
         global _local_scanner_running
         _local_scanner_running = True
@@ -228,72 +227,82 @@ class ScannerService:
                 client.set("scanner:is_running", "true", ex=900)
             except Exception:
                 pass
-                
         try:
-            logger.info(f"Starting daily scan for {target_date}...")
-            self.resolve_pending_entries(db)
+            return self._run_daily_scan_impl(db, target_date)
+        finally:
+            _local_scanner_running = False
+            client = _get_redis()
+            if client:
+                try:
+                    client.delete("scanner:is_running")
+                except Exception:
+                    pass
+
+    def _run_daily_scan_impl(self, db: Session, target_date: datetime.date) -> list[ScanResult]:
+        logger.info(f"Starting daily scan for {target_date}...")
+        self.resolve_pending_entries(db)
+        
+        # 1. Load active symbols
+        active_stocks = db.query(UniverseStock).filter(UniverseStock.is_active == True).all()
+        active_symbols = [s.symbol for s in active_stocks]
+        if not active_symbols:
+            logger.warning("No active symbols found in universe_stocks.")
+            return []
             
-            # 1. Load active symbols
-            active_stocks = db.query(UniverseStock).filter(UniverseStock.is_active == True).all()
-            active_symbols = [s.symbol for s in active_stocks]
-            if not active_symbols:
-                logger.warning("No active symbols found in universe_stocks.")
-                return []
-                
-            logger.info(f"Loaded {len(active_symbols)} active symbols for scan.")
+        logger.info(f"Loaded {len(active_symbols)} active symbols for scan.")
+        
+        # 2. Load fundamentals
+        fundamentals = db.query(CompanyFundamental).all()
+        fundamentals_map = {}
+        for f in fundamentals:
+            fundamentals_map[f.symbol] = {
+                "sales_growth_qoq": get_safe_float(f.sales_growth_qoq),
+                "sales_growth_yoy": get_safe_float(f.sales_growth_yoy),
+                "profit_growth_yoy": get_safe_float(f.profit_growth_yoy),
+                "roce": get_safe_float(f.roce),
+                "roe": get_safe_float(f.roe),
+                "debt_to_equity": get_safe_float(f.debt_to_equity, 999.0),
+                "institutional_holding_qoq_change": get_safe_float(f.institutional_holding_qoq_change),
+                "sector": f.sector or "Unknown"
+            }
             
-            # 2. Load fundamentals
-            fundamentals = db.query(CompanyFundamental).all()
-            fundamentals_map = {}
-            for f in fundamentals:
-                fundamentals_map[f.symbol] = {
-                    "sales_growth_qoq": get_safe_float(f.sales_growth_qoq),
-                    "sales_growth_yoy": get_safe_float(f.sales_growth_yoy),
-                    "profit_growth_yoy": get_safe_float(f.profit_growth_yoy),
-                    "roce": get_safe_float(f.roce),
-                    "roe": get_safe_float(f.roe),
-                    "debt_to_equity": get_safe_float(f.debt_to_equity, 999.0),
-                    "institutional_holding_qoq_change": get_safe_float(f.institutional_holding_qoq_change),
-                    "sector": f.sector or "Unknown"
-                }
-                
-            # 3. Load candles for a 400-day window (252 trading days buffer) in chunks to avoid ORM RAM buildup
-            import datetime as _dt
-            lookback_start = target_date - _dt.timedelta(days=400)
+        # 3. Load candles for a 400-day window (252 trading days buffer) in chunks to avoid ORM RAM buildup
+        import datetime as _dt
+        lookback_start = target_date - _dt.timedelta(days=400)
+        
+        all_candles = []
+        chunk_size = 50
+        for i in range(0, len(active_symbols), chunk_size):
+            symbol_chunk = active_symbols[i:i+chunk_size]
+            candles_chunk = db.query(DailyCandle).filter(
+                DailyCandle.symbol.in_(symbol_chunk),
+                DailyCandle.date >= lookback_start,
+                DailyCandle.date <= target_date
+            ).order_by(DailyCandle.symbol.asc(), DailyCandle.date.asc()).all()
             
-            all_candles = []
-            chunk_size = 50
-            for i in range(0, len(active_symbols), chunk_size):
-                symbol_chunk = active_symbols[i:i+chunk_size]
-                candles_chunk = db.query(DailyCandle).filter(
-                    DailyCandle.symbol.in_(symbol_chunk),
-                    DailyCandle.date >= lookback_start,
-                    DailyCandle.date <= target_date
-                ).order_by(DailyCandle.symbol.asc(), DailyCandle.date.asc()).all()
-                
-                for c in candles_chunk:
-                    all_candles.append({
-                        "symbol": c.symbol,
-                        "date": c.date,
-                        "open": float(c.open),
-                        "high": float(c.high),
-                        "low": float(c.low),
-                        "close": float(c.close),
-                        "volume": int(c.volume)
-                    })
-                # Evict SQLAlchemy ORM identity map cache to free memory
-                db.expire_all()
-                
-            if not all_candles:
-                logger.warning(f"No candles found up to {target_date}.")
-                return []
-                
-            df_all = pd.DataFrame(all_candles)
+            for c in candles_chunk:
+                all_candles.append({
+                    "symbol": c.symbol,
+                    "date": c.date,
+                    "open": float(c.open),
+                    "high": float(c.high),
+                    "low": float(c.low),
+                    "close": float(c.close),
+                    "volume": int(c.volume)
+                })
+            # Evict SQLAlchemy ORM identity map cache to free memory
+            db.expire_all()
             
-            # Group candles by symbol
-            candles_by_symbol = {}
-            for sym, group in df_all.groupby('symbol'):
-                candles_by_symbol[sym] = group.sort_values('date').reset_index(drop=True)
+        if not all_candles:
+            logger.warning(f"No candles found up to {target_date}.")
+            return []
+            
+        df_all = pd.DataFrame(all_candles)
+        
+        # Group candles by symbol
+        candles_by_symbol = {}
+        for sym, group in df_all.groupby('symbol'):
+            candles_by_symbol[sym] = group.sort_values('date').reset_index(drop=True)
             
         # 4. Create market average series for RS index
         # Return-based benchmark: mean of daily pct_change across all symbols
@@ -540,12 +549,3 @@ class ScannerService:
 
         logger.info(f"Daily scan for {target_date} finished. Saved {len(scan_results)} records.")
         return scan_results
-        
-    finally:
-        _local_scanner_running = False
-        client = _get_redis()
-        if client:
-            try:
-                client.delete("scanner:is_running")
-            except Exception:
-                pass
