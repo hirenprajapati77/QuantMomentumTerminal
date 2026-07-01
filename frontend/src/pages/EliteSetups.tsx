@@ -18,7 +18,7 @@ export default function EliteSetups({ onNavigate }: Props) {
       setError('');
       try {
         const data = await apiClient.get('/scanner/results');
-        # Filter by entry_triggered and grade = Elite or A+
+        // Filter by entry_triggered and grade = Elite or A+
         const filtered = data.filter((r: any) => 
           r.entry_triggered && (r.grade === 'Elite' || r.grade === 'A+')
         );
