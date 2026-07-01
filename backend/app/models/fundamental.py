@@ -7,8 +7,8 @@ class CompanyFundamental(Base):
     __table_args__ = {'extend_existing': True}
 
     symbol = Column(String(20), primary_key=True)
-    sector = Column(String(100), nullable=True)
-    industry = Column(String(100), nullable=True)
+    sector = Column(String(250), nullable=True)
+    industry = Column(String(250), nullable=True)
     market_cap = Column(Numeric(precision=15, scale=2), nullable=True)  # in Cr
     sales_growth_qoq = Column(Numeric(precision=6, scale=2), nullable=True)
     sales_growth_yoy = Column(Numeric(precision=6, scale=2), nullable=True)

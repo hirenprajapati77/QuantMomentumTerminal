@@ -150,12 +150,12 @@ class UniverseService:
                     db_stock = UniverseStock(
                         symbol=symbol,
                         is_active=passed,
-                        exclusion_reason=reason
+                        exclusion_reason=reason[:250] if reason else None
                     )
                     db.add(db_stock)
                 else:
                     db_stock.is_active = passed;
-                    db_stock.exclusion_reason = reason
+                    db_stock.exclusion_reason = reason[:250] if reason else None
                     
                 if passed:
                     passed_count += 1
