@@ -47,6 +47,8 @@ services:
       FYERS_REDIRECT_URI: "${FYERS_REDIRECT_URI}"
       ALLOWED_ORIGIN: "${ALLOWED_ORIGIN}"
       DATA_DIR: "/app/data"
+      SECRET_KEY: "${SECRET_KEY}"
+      SETTINGS_PIN: "${SETTINGS_PIN}"
     ports:
       - "8000:8000"
     volumes:
