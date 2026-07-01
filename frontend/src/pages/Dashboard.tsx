@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { apiClient } from '../api/client';
+import { formatDate } from '../utils/date';
 import { RefreshCw, Flame, Layers, HelpCircle, Activity, Clock } from 'lucide-react';
 
 interface Props {
@@ -29,7 +30,7 @@ export default function Dashboard({ onNavigate }: Props) {
       const results = await apiClient.get('/scanner/results');
       if (results && results.length > 0) {
         const latestDate = results[0].date;
-        setLastScanDate(latestDate);
+        setLastScanDate(formatDate(latestDate));
 
         // Count how many entry signals were triggered on the latest scan date
         const count = results.filter((r: any) => r.date === latestDate && r.entry_triggered).length;

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { apiClient } from '../api/client';
+import { formatDate } from '../utils/date';
 import { Eye, TrendingUp } from 'lucide-react';
 
 interface Props {
@@ -83,7 +84,7 @@ export default function NearBreakout({ onNavigate }: Props) {
                   onClick={() => onNavigate('StockDetail', { symbol: w.symbol, date: w.date })}
                 >
                   <td style={{ fontWeight: '700', color: 'var(--warning)' }}>{w.symbol}</td>
-                  <td>{w.date}</td>
+                  <td>{formatDate(w.date)}</td>
                   <td>
                     <span className="badge badge-watch">
                       {w.grade}

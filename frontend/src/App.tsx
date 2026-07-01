@@ -8,6 +8,7 @@ import Backtest from './pages/Backtest';
 import StockDetail from './pages/StockDetail';
 import SettingsPage from './pages/Settings';
 import { apiClient } from './api/client';
+import { formatDate } from './utils/date';
 import { 
   TrendingUp, 
   LayoutDashboard, 
@@ -29,7 +30,7 @@ export default function App() {
     try {
       const results = await apiClient.get('/scanner/results?limit=1');
       if (results && results.length > 0) {
-        setLastScanDate(results[0].date);
+        setLastScanDate(formatDate(results[0].date));
       } else {
         setLastScanDate('No scans run');
       }

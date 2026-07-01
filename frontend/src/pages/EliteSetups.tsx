@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { apiClient } from '../api/client';
+import { formatDate } from '../utils/date';
 import { Award, Zap } from 'lucide-react';
 
 interface Props {
@@ -17,7 +18,7 @@ export default function EliteSetups({ onNavigate }: Props) {
       setError('');
       try {
         const data = await apiClient.get('/scanner/results');
-        // Filter by entry_triggered and grade = Elite or A+
+        # Filter by entry_triggered and grade = Elite or A+
         const filtered = data.filter((r: any) => 
           r.entry_triggered && (r.grade === 'Elite' || r.grade === 'A+')
         );
@@ -84,7 +85,7 @@ export default function EliteSetups({ onNavigate }: Props) {
                   onClick={() => onNavigate('StockDetail', { symbol: s.symbol, date: s.date })}
                 >
                   <td style={{ fontWeight: '700', color: 'var(--success)' }}>{s.symbol}</td>
-                  <td>{s.date}</td>
+                  <td>{formatDate(s.date)}</td>
                   <td>
                     <span className={`badge badge-${s.grade.toLowerCase().replace('+', 'plus')}`}>
                       {s.grade}

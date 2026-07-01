@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { apiClient } from '../api/client';
+import { formatDate } from '../utils/date';
 import { Play, Clipboard, HelpCircle, CheckCircle, AlertTriangle, Layers } from 'lucide-react';
 
 export default function Backtest() {
@@ -381,8 +382,8 @@ export default function Backtest() {
                         {activeJobTrades.map((t) => (
                           <tr key={t.id}>
                             <td style={{ fontWeight: '700', color: '#fff' }}>{t.symbol}</td>
-                            <td>{t.entry_date}</td>
-                            <td>{t.exit_date || '-'}</td>
+                            <td>{formatDate(t.entry_date)}</td>
+                            <td>{t.exit_date ? formatDate(t.exit_date) : '-'}</td>
                             <td>{t.entry_price.toFixed(2)}</td>
                             <td>{t.exit_price ? t.exit_price.toFixed(2) : '-'}</td>
                             <td>{t.qty.toFixed(0)}</td>

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { apiClient } from '../api/client';
+import { formatDate } from '../utils/date';
 import { Search, Filter, Loader } from 'lucide-react';
 
 interface Props {
@@ -150,7 +151,7 @@ export default function Scanner({ onNavigate }: Props) {
                   onClick={() => onNavigate('StockDetail', { symbol: r.symbol, date: r.date })}
                 >
                   <td style={{ fontWeight: '700', color: 'var(--primary)' }}>{r.symbol}</td>
-                  <td>{r.date}</td>
+                  <td>{formatDate(r.date)}</td>
                   <td>
                     <span className={`badge badge-${r.grade.toLowerCase().replace('+', 'plus')}`}>
                       {r.grade}
