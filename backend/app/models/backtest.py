@@ -13,8 +13,8 @@ class BacktestJob(Base):
     time_stop_days = Column(Integer, nullable=False)
     initial_capital = Column(Float, nullable=False)
     metrics = Column(JSON, nullable=True) # Win rate, CAGR, Sharpe, drawdown, expectancy, total trades, equity curve, etc.
-    created_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
-    completed_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.datetime.now(datetime.timezone.utc), nullable=False)
+    completed_at = Column(DateTime(timezone=True), nullable=True)
     error_message = Column(String, nullable=True)
 
     trades = relationship("BacktestTrade", back_populates="job", cascade="all, delete-orphan")

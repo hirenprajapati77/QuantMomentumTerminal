@@ -264,7 +264,7 @@ def run_backtest_background_task(job_id: str, score_threshold: float, time_stop_
         job = db.query(BacktestJob).filter(BacktestJob.id == job_id).first()
         job.status = "COMPLETED"
         job.metrics = metrics_json
-        job.completed_at = datetime.datetime.utcnow()
+        job.completed_at = datetime.datetime.now(datetime.timezone.utc)
         db.commit()
         logger.info(f"Background backtest job {job_id} completed successfully!")
     except Exception as e:
@@ -274,7 +274,7 @@ def run_backtest_background_task(job_id: str, score_threshold: float, time_stop_
         if job:
             job.status = "FAILED"
             job.error_message = f"{str(e)}\n{traceback.format_exc()}"
-            job.completed_at = datetime.datetime.utcnow()
+            job.completed_at = datetime.datetime.now(datetime.timezone.utc)
             db.commit()
     finally:
         db.close()
