@@ -238,6 +238,20 @@ class ScannerService:
                 except Exception:
                     pass
 
+    def _save_last_run_timestamp(self):
+        try:
+            import os
+            import json
+            import time
+            data_dir = os.getenv("DATA_DIR", "./data")
+            os.makedirs(data_dir, exist_ok=True)
+            last_run_path = os.path.join(data_dir, "last_run.json")
+            with open(last_run_path, "w") as f:
+                json.dump({"timestamp": int(time.time())}, f)
+            logger.info(f"Saved scan execution timestamp to {last_run_path}")
+        except Exception as e:
+            logger.warning(f"Failed to save scan execution timestamp: {e}")
+
     def _run_daily_scan_impl(self, db: Session, target_date: datetime.date) -> list[ScanResult]:
         logger.info(f"Starting daily scan for {target_date}...")
         self.resolve_pending_entries(db)
@@ -247,6 +261,7 @@ class ScannerService:
         active_symbols = [s.symbol for s in active_stocks]
         if not active_symbols:
             logger.warning("No active symbols found in universe_stocks.")
+            self._save_last_run_timestamp()
             return []
             
         logger.info(f"Loaded {len(active_symbols)} active symbols for scan.")
@@ -295,6 +310,7 @@ class ScannerService:
             
         if not all_candles:
             logger.warning(f"No candles found up to {target_date}.")
+            self._save_last_run_timestamp()
             return []
             
         df_all = pd.DataFrame(all_candles)
@@ -423,6 +439,7 @@ class ScannerService:
             
         if not day_signals:
             logger.info("No active signals calculated for target date.")
+            self._save_last_run_timestamp()
             return []
             
         # Compute composite scores
@@ -560,18 +577,7 @@ class ScannerService:
         db.commit()
         
         # Save actual execution timestamp persistently
-        try:
-            import os
-            import json
-            import time
-            data_dir = os.getenv("DATA_DIR", "./data")
-            os.makedirs(data_dir, exist_ok=True)
-            last_run_path = os.path.join(data_dir, "last_run.json")
-            with open(last_run_path, "w") as f:
-                json.dump({"timestamp": int(time.time())}, f)
-            logger.info(f"Saved scan execution timestamp to {last_run_path}")
-        except Exception as e:
-            logger.warning(f"Failed to save scan execution timestamp: {e}")
+        self._save_last_run_timestamp()
 
         logger.info(f"Daily scan for {target_date} finished. Saved {len(scan_results)} records.")
         return scan_results
