@@ -9,7 +9,9 @@ class UniverseStock(Base):
     symbol = Column(String(20), primary_key=True)
     is_active = Column(Boolean, default=True)  # True if passed all filters
     exclusion_reason = Column(String(250), nullable=True)  # Reason if failed
-    last_refreshed = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+    last_refreshed = Column(DateTime(timezone=True),
+                            default=lambda: datetime.datetime.now(datetime.timezone.utc),
+                            onupdate=lambda: datetime.datetime.now(datetime.timezone.utc))
 
     def __repr__(self):
         return f"<UniverseStock {self.symbol} Active={self.is_active} Reason={self.exclusion_reason}>"

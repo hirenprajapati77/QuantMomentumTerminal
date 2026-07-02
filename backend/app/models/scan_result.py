@@ -1,9 +1,12 @@
-from sqlalchemy import Column, Integer, String, Date, Float, Boolean
+from sqlalchemy import Column, Integer, String, Date, Float, Boolean, UniqueConstraint
 from backend.app.storage.database import Base
 
 class ScanResult(Base):
     __tablename__ = "scan_results"
-    __table_args__ = {'extend_existing': True}
+    __table_args__ = (
+        UniqueConstraint('symbol', 'date', name='uq_scan_result_symbol_date'),
+        {'extend_existing': True}
+    )
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     date = Column(Date, index=True, nullable=False)

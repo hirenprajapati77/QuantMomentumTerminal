@@ -20,7 +20,9 @@ class CompanyFundamental(Base):
     institutional_holding_qoq_change = Column(Numeric(precision=6, scale=2), nullable=True)
     promoter_pledge = Column(Numeric(precision=6, scale=2), nullable=True)
     under_surveillance = Column(Boolean, default=False)
-    last_updated = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+    last_updated = Column(DateTime(timezone=True),
+                          default=lambda: datetime.datetime.now(datetime.timezone.utc),
+                          onupdate=lambda: datetime.datetime.now(datetime.timezone.utc))
 
     def __repr__(self):
         return f"<CompanyFundamental {self.symbol} Sector={self.sector} MC={self.market_cap} Cr>"

@@ -1,5 +1,6 @@
 import uuid
 import datetime
+import asyncio
 from typing import Optional, List, Any
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.orm import Session
@@ -46,7 +47,7 @@ class BacktestTradeSchema(BaseModel):
         orm_mode = True
 
 @router.post("/run", response_model=BacktestJobSchema)
-def run_backtest(
+async def run_backtest(
     payload: BacktestRunRequest,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db)
@@ -64,20 +65,23 @@ def run_backtest(
         score_threshold=payload.score_threshold,
         time_stop_days=payload.time_stop_days,
         initial_capital=payload.initial_capital,
-        created_at=datetime.datetime.utcnow()
+        created_at=datetime.datetime.now(datetime.timezone.utc)
     )
     db.add(job)
     db.commit()
     db.refresh(job)
     
-    # Enqueue background task
-    background_tasks.add_task(
-        run_backtest_background_task,
-        job_id=job_id,
-        score_threshold=payload.score_threshold,
-        time_stop_days=payload.time_stop_days,
-        initial_capital=payload.initial_capital
-    )
+    # Enqueue background task offloaded to a worker thread
+    async def run_in_thread():
+        await asyncio.to_thread(
+            run_backtest_background_task,
+            job_id=job_id,
+            score_threshold=payload.score_threshold,
+            time_stop_days=payload.time_stop_days,
+            initial_capital=payload.initial_capital
+        )
+        
+    background_tasks.add_task(run_in_thread)
     
     return job
 

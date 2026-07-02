@@ -45,6 +45,7 @@ _test_engine = create_engine(
     poolclass=StaticPool,
 )
 TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=_test_engine)
+_db_module.SessionLocal = TestingSessionLocal
 
 def override_get_db():
     db = TestingSessionLocal()
@@ -260,7 +261,9 @@ def test_get_last_run():
     db.commit()
     db.close()
 
-    r = client.get("/api/v1/scanner/last-run")
+    import unittest.mock
+    with unittest.mock.patch("os.path.exists", return_value=False):
+        r = client.get("/api/v1/scanner/last-run")
     assert r.status_code == 200
     ts = r.json()["timestamp"]
     assert ts is not None

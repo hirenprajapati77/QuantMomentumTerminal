@@ -428,10 +428,7 @@ class ScannerService:
         # Compute composite scores
         day_results = compute_composite_scores(day_signals)
         
-        # 7. Persist to DB (and overwrite existing records for symbol/date if they exist)
-        # Delete old scan results for target_date to avoid duplicates
-        db.query(ScanResult).filter(ScanResult.date == target_date).delete()
-        
+        # 7. Persist to DB (and overwrite existing records for symbol/date if they exist using query-then-update)
         scan_results = []
         for sym, res in day_results.items():
             # Check if next candle exists (for retrospective runs)
@@ -503,33 +500,62 @@ class ScannerService:
             trend_status = res["trend_status"]
             remarks = f"Breakout: Vol Ratio {vol_ratio:.1f}x, Close {close_pct*100:.0f}% of range. VCP Contractions: {contraction_count}. Trend: {trend_status}.{remarks_suffix}"
             
-            scan_obj = ScanResult(
-                date=target_date,
-                symbol=sym,
-                technical_score=res["technical_score"],
-                fundamental_score=res["fundamental_score"],
-                final_score=res["final_score"],
-                grade=grade,
-                entry_triggered=res["entry_triggered"],
-                breakout_vol_ratio=res["breakout_vol_ratio"],
-                close_pct_of_range=res["close_pct_of_range"],
-                upper_wick_pct=res["upper_wick_pct"],
-                passes_fundamental=res["passes_fundamental"],
-                
-                # Persistence additions
-                sector=res["sector"],
-                entry=entry_price,
-                entry_status=entry_status,
-                stop=stop_price,
-                target1=entry_price * 1.10 if entry_price is not None else None,
-                target2=entry_price * 1.20 if entry_price is not None else None,
-                target3=t3_val,
-                confidence=confidence,
-                remarks=remarks,
-                holding_days=holding_days
-            )
-            db.add(scan_obj)
-            scan_results.append(scan_obj)
+            # Check if record already exists to perform update
+            existing = db.query(ScanResult).filter(
+                ScanResult.symbol == sym,
+                ScanResult.date == target_date
+            ).first()
+            
+            target_1 = entry_price * 1.10 if entry_price is not None else None
+            target_2 = entry_price * 1.20 if entry_price is not None else None
+            
+            if existing:
+                existing.technical_score = res["technical_score"]
+                existing.fundamental_score = res["fundamental_score"]
+                existing.final_score = res["final_score"]
+                existing.grade = grade
+                existing.entry_triggered = res["entry_triggered"]
+                existing.breakout_vol_ratio = res["breakout_vol_ratio"]
+                existing.close_pct_of_range = res["close_pct_of_range"]
+                existing.upper_wick_pct = res["upper_wick_pct"]
+                existing.passes_fundamental = res["passes_fundamental"]
+                existing.sector = res["sector"]
+                existing.entry = entry_price
+                existing.entry_status = entry_status
+                existing.stop = stop_price
+                existing.target1 = target_1
+                existing.target2 = target_2
+                existing.target3 = t3_val
+                existing.confidence = confidence
+                existing.remarks = remarks
+                existing.holding_days = holding_days
+                scan_results.append(existing)
+            else:
+                scan_obj = ScanResult(
+                    date=target_date,
+                    symbol=sym,
+                    technical_score=res["technical_score"],
+                    fundamental_score=res["fundamental_score"],
+                    final_score=res["final_score"],
+                    grade=grade,
+                    entry_triggered=res["entry_triggered"],
+                    breakout_vol_ratio=res["breakout_vol_ratio"],
+                    close_pct_of_range=res["close_pct_of_range"],
+                    upper_wick_pct=res["upper_wick_pct"],
+                    passes_fundamental=res["passes_fundamental"],
+                    sector=res["sector"],
+                    entry=entry_price,
+                    entry_status=entry_status,
+                    stop=stop_price,
+                    target1=target_1,
+                    target2=target_2,
+                    target3=t3_val,
+                    confidence=confidence,
+                    remarks=remarks,
+                    holding_days=holding_days
+                )
+                db.add(scan_obj)
+                scan_results.append(scan_obj)
             
         db.commit()
         

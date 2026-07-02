@@ -136,6 +136,10 @@ class FundamentalService:
                             
                     if len(profit_vals) >= 5 and profit_vals[-1] is not None and profit_vals[-5] is not None:
                         yoy_profit = profit_vals[-5]
+                        # WARNING/KNOWN LIMITATION: If yoy_profit <= 0 (e.g. company was loss-making last year)
+                        # and is now profitable (profit_vals[-1] > 0), this check silently returns None for growth rate.
+                        # Such loss-to-profit transition is a legitimate bullish scenario, but will fail the
+                        # fundamental gate. This is kept for now to avoid division-by-zero or negative denominator anomalies.
                         if yoy_profit > 0:
                             data["profit_growth_yoy"] = round(((profit_vals[-1] - yoy_profit) / yoy_profit) * 100, 2)
 
