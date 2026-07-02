@@ -1,6 +1,7 @@
 import datetime
 from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
+from sqlalchemy.orm import Session
 from pydantic import BaseModel, Field
 from backend.app.storage.database import get_db
 from backend.app.models.scan_result import ScanResult
