@@ -161,11 +161,20 @@ def get_fyers_config(session: str = Depends(get_current_session)):
             masked_app_id = "***"
             
     token_exists = os.path.exists(settings.token_path)
+    is_authenticated = False
+    if token_exists:
+        try:
+            mtime = os.path.getmtime(settings.token_path)
+            age_hours = (time.time() - mtime) / 3600.0
+            if age_hours < 24.0:
+                is_authenticated = True
+        except Exception:
+            pass
     
     return {
         "app_id_masked": masked_app_id,
         "redirect_uri": settings.FYERS_REDIRECT_URI,
-        "authenticated": token_exists
+        "authenticated": is_authenticated
     }
 
 @router.post("/fyers-config")
