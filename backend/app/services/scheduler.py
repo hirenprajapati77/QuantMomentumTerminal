@@ -67,6 +67,8 @@ def sync_daily_ingestion_and_scan(target_date: datetime.date):
             try:
                 # Ingest for target_date
                 market_data_service.ingest_symbol_data(db, sym, target_date, target_date, bhavcopy_cache)
+                # Prevent Fyers API rate limiting (HTTP 429)
+                time.sleep(0.35)
             except Exception as e:
                 logger.error(f"Failed to ingest data for symbol {sym} on {target_date}: {e}")
                 
