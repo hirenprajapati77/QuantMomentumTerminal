@@ -102,8 +102,14 @@ def oauth_callback(
             <div class="card">
                 <div class="checkmark">✓</div>
                 <h1>Fyers Login Successful</h1>
-                <p>Your access token has been generated and saved securely. You can now close this tab and return to the scanner dashboard.</p>
+                <p>Your access token has been generated and saved securely. Redirecting you back to the dashboard in 3 seconds...</p>
+                <a href="/" style="display: inline-block; margin-top: 24px; padding: 12px 24px; background-color: #38bdf8; color: #0f172a; text-decoration: none; border-radius: 8px; font-weight: bold;">Go to Dashboard</a>
             </div>
+            <script>
+                setTimeout(function() {
+                    window.location.href = "/";
+                }, 3000);
+            </script>
         </body>
         </html>
         """
