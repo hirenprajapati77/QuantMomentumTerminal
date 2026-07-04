@@ -224,7 +224,7 @@ class ScannerService:
         client = _get_redis()
         if client:
             try:
-                client.set("scanner:is_running", "true", ex=900)
+                client.set("scanner:is_running", "true", ex=3600)
             except Exception:
                 pass
         try:
