@@ -42,12 +42,15 @@ export default function StockDetail({ symbol, triggerDate, onBack }: Props) {
   }, [symbol, triggerDate]);
 
   useEffect(() => {
+    let timer: any = null;
     if (candles.length > 0 && !loading) {
-      const timer = setTimeout(() => {
+      timer = setTimeout(() => {
         plotCandlestickChart();
       }, 50);
-      return () => clearTimeout(timer);
     }
+    return () => {
+      if (timer) clearTimeout(timer);
+    };
   }, [candles, scanResult, loading]);
 
   const plotCandlestickChart = () => {
