@@ -61,7 +61,7 @@ app.add_middleware(
 
 # Register API Routers
 app.include_router(auth_router, prefix="/api/v1/auth", tags=["Authentication"])
-app.include_router(auth_router, prefix="/api/v1/fyers", tags=["Authentication Callback"])
+app.include_router(auth_router, prefix="/api/v1/fyers", tags=["Authentication Callback"], include_in_schema=False)
 app.include_router(scanner_router, prefix="/api/v1/scanner", tags=["Scanner"])
 app.include_router(backtest_router, prefix="/api/v1/backtest", tags=["Backtesting"])
 app.include_router(universe_router, prefix="/api/v1/universe", tags=["Universe"])

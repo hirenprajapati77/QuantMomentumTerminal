@@ -99,12 +99,13 @@ def main():
     
     failed_fetches = []
     total_candles_saved = 0
+    bhavcopy_cache = {}
     
     for idx, sym in enumerate(active_symbols):
         try:
             print(f"  ({idx+1}/{len(active_symbols)}) Fetching {sym}... ", end="", flush=True)
             # Ingest symbol data handles fetching, formatting, and database commit
-            market_data_service.ingest_symbol_data(db, sym, start_date, target_date)
+            market_data_service.ingest_symbol_data(db, sym, start_date, target_date, bhavcopy_cache)
             
             # Query count of saved candles to display progress
             candles_count = db.query(DailyCandle).filter(DailyCandle.symbol == sym).count()

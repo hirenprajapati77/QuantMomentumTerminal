@@ -18,6 +18,7 @@ class UniverseService:
     def __init__(self):
         self.fundamental_service = FundamentalService()
         self.market_data_service = MarketDataService()
+        self._bhavcopy_cache = {}
         self.headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             'Accept': '*/*',
@@ -108,7 +109,11 @@ class UniverseService:
         if candles_count < 20:
             start_date = today - datetime.timedelta(days=35)
             try:
-                self.market_data_service.ingest_symbol_data(db, symbol, start_date, today)
+                bhavcopy_cache = getattr(self, "_bhavcopy_cache", None)
+                if bhavcopy_cache is None:
+                    bhavcopy_cache = {}
+                    self._bhavcopy_cache = bhavcopy_cache
+                self.market_data_service.ingest_symbol_data(db, symbol, start_date, today, bhavcopy_cache)
             except Exception as e:
                 logger.warning(f"Could not ingest historical candles for {symbol} to calculate avg value: {e}")
                 
