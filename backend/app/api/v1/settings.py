@@ -100,8 +100,9 @@ def get_current_session(authorization: Optional[str] = Header(None)):
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Missing or invalid session token.")
     
-    token = authorization.split(" ")[1]
-    if not verify_session_token(token):
+    parts = authorization.split(" ", 1)
+    token = parts[1].strip() if len(parts) > 1 else ""
+    if not token or not verify_session_token(token):
         raise HTTPException(status_code=401, detail="Session expired or invalid token. Please log in again.")
     return token
 

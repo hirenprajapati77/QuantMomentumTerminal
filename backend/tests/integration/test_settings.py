@@ -110,3 +110,40 @@ def test_settings_rate_limiting():
     # Now it should succeed
     response = client.post("/api/v1/settings/unlock", json={"pin": settings.SETTINGS_PIN})
     assert response.status_code == 200
+
+def test_settings_session_headers_validation():
+    # 1. Get a valid token first
+    valid_pin = settings.SETTINGS_PIN
+    response = client.post("/api/v1/settings/unlock", json={"pin": valid_pin})
+    assert response.status_code == 200
+    valid_token = response.json().get("token")
+    assert valid_token is not None
+
+    # 2. Test Authorization: "Bearer" (no token) -> 401
+    response = client.get(
+        "/api/v1/settings/fyers-config",
+        headers={"Authorization": "Bearer"}
+    )
+    assert response.status_code == 401
+
+    # 3. Test Authorization: "Bearer   " (whitespace only) -> 401
+    response = client.get(
+        "/api/v1/settings/fyers-config",
+        headers={"Authorization": "Bearer   "}
+    )
+    assert response.status_code == 401
+
+    # 4. Test Authorization: "Bearer <valid_token>" -> 200
+    response = client.get(
+        "/api/v1/settings/fyers-config",
+        headers={"Authorization": f"Bearer {valid_token}"}
+    )
+    assert response.status_code == 200
+
+    # 5. Test Authorization: "Bearer <garbage_token>" -> 401
+    response = client.get(
+        "/api/v1/settings/fyers-config",
+        headers={"Authorization": "Bearer garbage_token"}
+    )
+    assert response.status_code == 401
+
