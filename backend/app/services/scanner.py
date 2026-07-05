@@ -215,7 +215,7 @@ class ScannerService:
             logger.warning(f"Error computing dynamic trailing stop for {symbol}: {e}", exc_info=True)
             return None
 
-    def run_daily_scan(self, db: Session, target_date: datetime.date) -> list[ScanResult]:
+    def run_daily_scan(self, db: Session, target_date: datetime.date, force_recompute: bool = False) -> list[ScanResult]:
         """
         Wrapper that handles scanner execution flags and calls the implementation.
         """
@@ -228,7 +228,7 @@ class ScannerService:
             except Exception:
                 pass
         try:
-            return self._run_daily_scan_impl(db, target_date)
+            return self._run_daily_scan_impl(db, target_date, force_recompute=force_recompute)
         finally:
             _local_scanner_running = False
             client = _get_redis()
@@ -252,7 +252,7 @@ class ScannerService:
         except Exception as e:
             logger.warning(f"Failed to save scan execution timestamp: {e}")
 
-    def _run_daily_scan_impl(self, db: Session, target_date: datetime.date) -> list[ScanResult]:
+    def _run_daily_scan_impl(self, db: Session, target_date: datetime.date, force_recompute: bool = False) -> list[ScanResult]:
         logger.info(f"Starting daily scan for {target_date}...")
         self.resolve_pending_entries(db)
         
@@ -414,7 +414,9 @@ class ScannerService:
         # Run expensive indicator calculations only for candidates
         for sym, loc_idx in candidates:
             # --- Redis cache check (keyed by symbol + date) ---
-            cached = _read_cache(sym, target_date)
+            # Skipped entirely when force_recompute=True, so stale cached signals
+            # from before a data correction can never be silently reused.
+            cached = None if force_recompute else _read_cache(sym, target_date)
             if cached is not None:
                 day_signals[sym].update(cached)
                 continue

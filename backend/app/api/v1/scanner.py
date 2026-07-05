@@ -22,6 +22,7 @@ class ScannerStatusResponse(BaseModel):
 
 class ScanRequest(BaseModel):
     date: Optional[str] = Field(None, description="Date in YYYY-MM-DD format. Defaults to current date if not provided.")
+    force_recompute: bool = Field(False, description="If true, bypasses the Redis signal cache and recomputes indicators fresh. Use after a data correction/backfill to guarantee no stale cached signals are reused.")
 
 class ScanResultSchema(BaseModel):
     symbol: str
@@ -51,13 +52,13 @@ class ScanResultSchema(BaseModel):
     class Config:
         orm_mode = True
 
-def run_scan_in_background(target_date: datetime.date):
+def run_scan_in_background(target_date: datetime.date, force_recompute: bool = False):
     from backend.app.storage.database import SessionLocal
     import logging
     logger = logging.getLogger("nse_scanner.api_background")
     db_bg = SessionLocal()
     try:
-        scanner_service.run_daily_scan(db_bg, target_date)
+        scanner_service.run_daily_scan(db_bg, target_date, force_recompute=force_recompute)
     except Exception as e:
         logger.error(f"Error executing background scan for {target_date}: {e}", exc_info=True)
     finally:
@@ -80,7 +81,8 @@ def trigger_scan(background_tasks: BackgroundTasks, payload: Optional[ScanReques
     if is_scanner_running():
         raise HTTPException(status_code=409, detail="A scan is already in progress.")
         
-    background_tasks.add_task(run_scan_in_background, target_date)
+    force_recompute = bool(payload and payload.force_recompute)
+    background_tasks.add_task(run_scan_in_background, target_date, force_recompute)
     return {"status": "scanning", "message": "Scan triggered successfully in the background."}
 
 @router.get("/status", response_model=ScannerStatusResponse)
