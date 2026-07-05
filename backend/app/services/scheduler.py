@@ -79,6 +79,12 @@ def sync_daily_ingestion_and_scan(target_date: datetime.date):
         
     except Exception as e:
         logger.error(f"Scheduler worker encountered an error: {e}", exc_info=True)
+        from backend.app.core.alerts import send_telegram_alert
+        send_telegram_alert(
+            f"⚠️ <b>NSE Scanner Alert</b>\n"
+            f"Daily scan failed on {target_date}\n"
+            f"Error: {type(e).__name__}: {str(e)[:200]}"
+        )
     finally:
         db.close()
 

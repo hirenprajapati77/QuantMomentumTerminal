@@ -23,6 +23,10 @@ class Settings:
     SETTINGS_PIN: str = os.getenv("SETTINGS_PIN", "1234")
     SECRET_KEY: str = os.getenv("SECRET_KEY", "supersecretkey")
 
+    # Observability Alerts
+    TELEGRAM_BOT_TOKEN: str = os.getenv("TELEGRAM_BOT_TOKEN", "")
+    TELEGRAM_CHAT_ID: str = os.getenv("TELEGRAM_CHAT_ID", "")
+
     @property
     def config_path(self) -> Path:
         return self.DATA_DIR / "fyers_config.json"
