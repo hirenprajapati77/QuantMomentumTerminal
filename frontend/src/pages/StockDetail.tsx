@@ -196,7 +196,7 @@ export default function StockDetail({ symbol, triggerDate, onBack }: Props) {
               <div style={{ display: 'flex', gap: '15px', marginTop: '16px', fontSize: '12px', justifyContent: 'center', flexWrap: 'wrap' }}>
                 <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <span style={{ display: 'inline-block', width: '12px', height: '2px', backgroundColor: '#e2e8f0', borderStyle: 'dashed' }}></span>
-                  Entry (₹{entryPrice.toFixed(2)}) [{scanResult.entry_status || 'Pending'}]
+                  Entry (₹{entryPrice.toFixed(2)}) [{scanResult.entry_status || '—'}]
                 </span>
                 <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <span style={{ display: 'inline-block', width: '12px', height: '2px', backgroundColor: '#10b981', borderStyle: 'dashed' }}></span>

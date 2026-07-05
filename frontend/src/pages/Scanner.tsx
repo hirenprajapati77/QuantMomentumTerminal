@@ -164,8 +164,8 @@ export default function Scanner({ onNavigate }: Props) {
                     </span>
                   </td>
                   <td>
-                    <span className={`badge badge-status-${(r.entry_status || 'pending').toLowerCase().replace(' ', '-')}`}>
-                      {r.entry_status || 'Pending'}
+                    <span className={`badge badge-status-${(r.entry_status || 'no-signal').toLowerCase().replace(' ', '-')}`}>
+                      {r.entry_status || '—'}
                     </span>
                   </td>
                   <td style={{ fontWeight: '600', color: 'var(--success)' }}>

@@ -366,7 +366,11 @@ class ScannerService:
             df_dict[sym] = df.set_index('date')
             
         # 6. Run daily scoring for target_date
-        # Check candidates (only stocks that actually have data on target_date)
+        # Score the full active universe every day (not just volume/candle-shape
+        # pre-filter passers) so Grade/Score are meaningful for every stock,
+        # not just ones already mid-breakout. This is required for Near
+        # Breakout to surface stocks approaching a setup, not just stocks
+        # already inside one.
         candidates = []
         for sym in active_symbols:
             if sym not in df_dict:
@@ -374,13 +378,9 @@ class ScannerService:
             sym_df = df_dict[sym]
             if target_date not in sym_df.index:
                 continue
-                
-            row = sym_df.loc[target_date]
-            # Fast filter checks
-            if row['volume_ratio'] >= 2.0 and row['close_pct'] >= 0.85 and row['upper_wick_pct'] <= 0.15:
-                loc_idx = sym_df.index.get_loc(target_date)
-                if loc_idx >= 100:
-                    candidates.append((sym, loc_idx))
+            loc_idx = sym_df.index.get_loc(target_date)
+            if loc_idx >= 100:
+                candidates.append((sym, loc_idx))
                     
         # Gather signals for all symbols on this date
         day_signals = {}

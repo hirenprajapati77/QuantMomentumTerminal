@@ -93,8 +93,8 @@ export default function EliteSetups({ onNavigate }: Props) {
                   </td>
                   <td style={{ fontWeight: '600' }}>{s.final_score.toFixed(1)}</td>
                   <td>
-                    <span className={`badge badge-status-${(s.entry_status || 'pending').toLowerCase().replace(' ', '-')}`}>
-                      {s.entry_status || 'Pending'}
+                    <span className={`badge badge-status-${(s.entry_status || 'no-signal').toLowerCase().replace(' ', '-')}`}>
+                      {s.entry_status || '—'}
                     </span>
                   </td>
                   <td style={{ fontWeight: '600', color: 'var(--success)' }}>
