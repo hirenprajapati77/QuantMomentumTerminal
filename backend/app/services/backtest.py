@@ -41,13 +41,13 @@ def run_backtest_background_task(job_id: str, score_threshold: float, time_stop_
         fundamentals_map = {}
         for f in fundamentals:
             fundamentals_map[f.symbol] = {
-                "sales_growth_qoq": get_safe_float(f.sales_growth_qoq),
-                "sales_growth_yoy": get_safe_float(f.sales_growth_yoy),
-                "profit_growth_yoy": get_safe_float(f.profit_growth_yoy),
-                "roce": get_safe_float(f.roce),
-                "roe": get_safe_float(f.roe),
-                "debt_to_equity": get_safe_float(f.debt_to_equity, 999.0),
-                "institutional_holding_qoq_change": get_safe_float(f.institutional_holding_qoq_change),
+                "sales_growth_qoq": f.sales_growth_qoq,
+                "sales_growth_yoy": f.sales_growth_yoy,
+                "profit_growth_yoy": f.profit_growth_yoy,
+                "roce": f.roce,
+                "roe": f.roe,
+                "debt_to_equity": f.debt_to_equity,
+                "institutional_holding_qoq_change": f.institutional_holding_qoq_change,
                 "sector": f.sector or "Unknown"
             }
 
