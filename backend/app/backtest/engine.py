@@ -242,6 +242,13 @@ class BacktestEngine:
             # 3. Check entries (signals generated on yesterday's bar t-1)
             # Allocate equal sizing of 10% of portfolio value per trade
             max_positions = 5
+            # NOTE: sized off self.initial_capital (fixed), not self.capital
+            # (current equity) — position sizing intentionally does not
+            # compound. A winning strategy's CAGR/Sharpe will read lower than
+            # a compounding equivalent, and a losing strategy won't shrink its
+            # position size as capital depletes. This is a deliberate
+            # simplification, not a bug — revisit only if compounding realism
+            # becomes a requirement.
             trade_allocation = self.initial_capital * 0.20  # fixed 20% of initial capital per position
             
             for sym, signals in signals_dict.items():

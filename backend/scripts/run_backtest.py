@@ -45,7 +45,11 @@ def execute_single_backtest_run(
         if t_idx < 101:
             continue  # Warmup
             
-        # 1. Find symbols that meet basic breakout candle parameters today
+        # 1. Score the full active universe on every date (matches
+        # backend/app/services/backtest.py — kept in sync so this standalone
+        # script produces results consistent with the API-driven backtest).
+        # total_score/grade are meaningful for every stock, not just
+        # volume/breakout-shape passers.
         candidates = []
         for sym in active_symbols:
             if sym not in df_dict:
@@ -53,15 +57,10 @@ def execute_single_backtest_run(
             sym_df = df_dict[sym]
             if date not in sym_df.index:
                 continue
+            loc_idx = sym_df.index.get_loc(date)
+            if loc_idx >= 100:
+                candidates.append((sym, loc_idx))
                 
-            row = sym_df.loc[date]
-            # Fast filter checks
-            if row['volume_ratio'] >= 2.0 and row['close_pct'] >= 0.85 and row['upper_wick_pct'] <= 0.15:
-                # Ensure they have enough history
-                loc_idx = sym_df.index.get_loc(date)
-                if loc_idx >= 100:
-                    candidates.append((sym, loc_idx))
-                    
         if not candidates:
             continue
             
