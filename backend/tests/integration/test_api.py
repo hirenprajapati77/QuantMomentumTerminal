@@ -151,20 +151,32 @@ def test_scanner_results_empty_initially():
 def test_manual_scan_trigger_and_persistence():
     target = (datetime.date(2026, 1, 1) + datetime.timedelta(days=109)).strftime("%Y-%m-%d")
 
-    r = client.post("/api/v1/scanner/scan", json={"date": target})
+    # Score-only mode (no live Fyers ingest in tests)
+    r = client.post("/api/v1/scanner/scan", json={"date": target, "ingest": False})
     assert r.status_code == 200
-    results = r.json()
-    assert len(results) >= 1
+    body = r.json()
+    assert body["status"] == "scanning"
+    assert body["mode"] == "scan_only"
 
     db = TestingSessionLocal()
     db_rows = db.query(ScanResult).filter(
         ScanResult.date == datetime.datetime.strptime(target, "%Y-%m-%d").date()
     ).all()
-    assert len(db_rows) == len(results)
+    assert len(db_rows) >= 1
     for row in db_rows:
         assert row.symbol in ("RELIANCE", "TCS")
         assert row.grade in ("Elite", "A+", "A", "Watch", "Reject")
     db.close()
+
+
+def test_data_health_endpoint():
+    r = client.get("/api/v1/scanner/data-health")
+    assert r.status_code == 200
+    data = r.json()
+    assert data["active_symbols"] == 2
+    assert data["last_candle_date"] is not None
+    assert "symbols_with_min_history" in data
+    assert "is_stale" in data
 
 
 def test_scanner_results_filterable_after_scan():

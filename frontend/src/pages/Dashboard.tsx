@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { apiClient } from '../api/client';
 import { formatDate } from '../utils/date';
-import { RefreshCw, Flame, Layers, HelpCircle, Activity, Clock } from 'lucide-react';
+import { RefreshCw, Flame, Layers, HelpCircle, Activity, Clock, AlertTriangle } from 'lucide-react';
 
 interface Props {
   onNavigate: (page: string, params?: any) => void;
@@ -14,6 +14,7 @@ export default function Dashboard({ onNavigate }: Props) {
   const [activeSignalsCount, setActiveSignalsCount] = useState<number>(0);
   const [loadingScan, setLoadingScan] = useState(false);
   const [scanMessage, setScanMessage] = useState('');
+  const [dataHealth, setDataHealth] = useState<any>(null);
 
   const loadData = async () => {
     try {
@@ -60,6 +61,13 @@ export default function Dashboard({ onNavigate }: Props) {
       } catch (err) {
         setLastScanTimestamp('No scans run yet');
       }
+
+      try {
+        const health = await apiClient.get('/scanner/data-health');
+        setDataHealth(health);
+      } catch (err) {
+        setDataHealth(null);
+      }
     } catch (e: any) {
       console.error("Failed to load dashboard data", e);
     }
@@ -75,7 +83,7 @@ export default function Dashboard({ onNavigate }: Props) {
         const res = await apiClient.get('/scanner/status');
         if (res && !res.is_running) {
           clearInterval(pollInterval);
-          setScanMessage('Scan completed successfully!');
+          setScanMessage('Ingest + scan completed. Check Active Signals and data freshness.');
           setLoadingScan(false);
           loadData();
         }
@@ -89,9 +97,10 @@ export default function Dashboard({ onNavigate }: Props) {
 
   const handleManualScan = async () => {
     setLoadingScan(true);
-    setScanMessage('Scanning in progress...');
+    setScanMessage('Catch-up ingestion + scan in progress (may take several minutes)...');
     try {
-      await apiClient.post('/scanner/scan', {});
+      // Default API mode downloads missing candles before scoring
+      await apiClient.post('/scanner/scan', { ingest: true });
       // Begin polling the background task status
       pollScanStatus();
     } catch (e: any) {
@@ -109,6 +118,31 @@ export default function Dashboard({ onNavigate }: Props) {
         </div>
       </div>
 
+      {dataHealth?.warning && (
+        <div className="glass-panel" style={{
+          padding: '16px 20px',
+          marginBottom: '24px',
+          borderColor: 'var(--danger)',
+          display: 'flex',
+          gap: '12px',
+          alignItems: 'flex-start'
+        }}>
+          <AlertTriangle size={20} style={{ color: 'var(--danger)', flexShrink: 0, marginTop: 2 }} />
+          <div>
+            <strong style={{ color: '#fff' }}>Data pipeline warning</strong>
+            <p style={{ color: 'var(--text-secondary)', fontSize: '13px', marginTop: 4 }}>
+              {dataHealth.warning}
+            </p>
+            {dataHealth.last_candle_date && (
+              <p style={{ color: 'var(--text-muted)', fontSize: '12px', marginTop: 6 }}>
+                Last candle: {formatDate(dataHealth.last_candle_date)} · Scoreable symbols:{' '}
+                {dataHealth.symbols_with_min_history}/{dataHealth.active_symbols}
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
       <div className="stats-grid">
         <div className="glass-panel stat-card">
           <div className="stat-header">
@@ -116,7 +150,11 @@ export default function Dashboard({ onNavigate }: Props) {
             <Activity size={18} className="text-muted" />
           </div>
           <div className="stat-value">{lastScanDate}</div>
-          <div className="stat-desc">Latest daily scan database date</div>
+          <div className="stat-desc">
+            {dataHealth?.last_candle_date
+              ? `Last candle ${formatDate(dataHealth.last_candle_date)}`
+              : 'Latest daily scan database date'}
+          </div>
         </div>
 
         <div className="glass-panel stat-card">
@@ -145,7 +183,11 @@ export default function Dashboard({ onNavigate }: Props) {
             <Layers size={18} className="text-muted" />
           </div>
           <div className="stat-value">{universeStats.active} / {universeStats.total}</div>
-          <div className="stat-desc">Stocks filtered by hard liquidity rules</div>
+          <div className="stat-desc">
+            {dataHealth
+              ? `${dataHealth.symbols_with_min_history} scoreable (≥${dataHealth.min_history_candles} bars)`
+              : 'Stocks filtered by hard liquidity rules'}
+          </div>
         </div>
       </div>
 
@@ -153,7 +195,8 @@ export default function Dashboard({ onNavigate }: Props) {
         <div className="glass-panel" style={{ padding: '28px' }}>
           <h3 className="brand-name" style={{ marginBottom: '16px', fontSize: '18px' }}>Operator Control</h3>
           <p style={{ color: 'var(--text-secondary)', fontSize: '14px', marginBottom: '24px', lineHeight: '1.6' }}>
-            Run a manual database update scan to download the latest NSE Bhavcopy files, calculate indicators, and compute grades for today.
+            Trigger catch-up ingestion + scan: downloads missing Fyers/NSE candles for stalled days,
+            repairs short-history symbols, then recomputes grades and entry signals.
           </p>
           <button
             className="btn btn-primary"
@@ -161,14 +204,14 @@ export default function Dashboard({ onNavigate }: Props) {
             disabled={loadingScan}
           >
             {loadingScan ? <RefreshCw className="spinner" size={16} /> : <RefreshCw size={16} />}
-            Trigger Daily Scan
+            Trigger Ingest + Scan
           </button>
           {scanMessage && (
             <p style={{
               marginTop: '16px',
               fontSize: '13px',
               fontWeight: 500,
-              color: scanMessage.includes('completed') ? 'var(--success)' : 'var(--danger)'
+              color: scanMessage.includes('completed') ? 'var(--success)' : (scanMessage.includes('progress') ? 'var(--text-secondary)' : 'var(--danger)')
             }}>
               {scanMessage}
             </p>
