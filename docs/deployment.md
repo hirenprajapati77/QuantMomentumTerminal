@@ -10,7 +10,18 @@ Ensure file permissions are restricted to the owner:
 chmod 600 .env
 ```
 
-## Nightly Database Backups
+## Market Data Catch-Up
+
+The backend scheduler now self-heals after outages (expired Fyers token, missed 7 PM IST job, or container restart):
+
+1. On startup and every weekday at 7:00 PM IST, it runs a **catch-up pipeline**.
+2. Symbols with fewer than 200 daily candles are history-backfilled (~450 calendar days) so trend/VCP scoring can run.
+3. Missing weekdays since the latest candle date are ingested from Fyers + NSE Bhavcopy (capped at 15 weekdays per run), then scored.
+4. Dashboard **Trigger Ingest + Scan** calls the same catch-up path (default `POST /api/v1/scanner/scan` with `ingest: true`).
+5. `GET /api/v1/scanner/data-health` reports last candle date, scoreable-universe coverage, and staleness warnings.
+
+If Elite Signals stay empty after a healthy catch-up, that means no symbol met the simultaneous entry gates (score ≥ 85, vol ≥ 2×, trend pass, top-sector, breakout candle quality, fundamental gate) — not that the scanner failed to run.
+
 A nightly cron job must be configured on the host Oracle VPS to run the PostgreSQL database backup script daily at 2:00 AM IST.
 
 ### Configuration Instructions:

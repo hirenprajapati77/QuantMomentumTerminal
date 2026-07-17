@@ -33,6 +33,23 @@ def is_scanner_running() -> bool:
             pass
     return _local_scanner_running
 
+
+def set_scanner_running(running: bool) -> None:
+    """Set/clear the shared scanner/pipeline busy flag (Redis + local fallback)."""
+    global _local_scanner_running
+    _local_scanner_running = bool(running)
+    client = _get_redis()
+    if client:
+        try:
+            if running:
+                # Long TTL covers catch-up of many symbols / missed days
+                client.set("scanner:is_running", "true", ex=6 * 3600)
+            else:
+                client.delete("scanner:is_running")
+        except Exception:
+            pass
+
+
 def _get_redis():
     """Return a Redis client, or None if Redis is unavailable."""
     global _redis_client
@@ -215,28 +232,65 @@ class ScannerService:
             logger.warning(f"Error computing dynamic trailing stop for {symbol}: {e}", exc_info=True)
             return None
 
-    def run_daily_scan(self, db: Session, target_date: datetime.date, force_recompute: bool = False) -> list[ScanResult]:
+    @staticmethod
+    def resolve_effective_scan_date(db: Session, target_date: datetime.date) -> datetime.date:
+        """
+        If no active-universe candles exist on target_date, fall back to the most
+        recent candle date at or before target_date.
+
+        Without this, a manual "scan today" after a data outage updates last_run
+        but persists zero ScanResult rows — which is what happened on the live
+        VPS when candles stopped at 2026-07-03 while operators kept re-scanning.
+        """
+        from sqlalchemy import func
+        from backend.app.models.universe import UniverseStock
+
+        active_symbols = [
+            s.symbol for s in db.query(UniverseStock).filter(UniverseStock.is_active == True).all()
+        ]
+        if not active_symbols:
+            return target_date
+
+        has_target = db.query(DailyCandle.symbol).filter(
+            DailyCandle.symbol.in_(active_symbols),
+            DailyCandle.date == target_date
+        ).first()
+        if has_target:
+            return target_date
+
+        latest = db.query(func.max(DailyCandle.date)).filter(
+            DailyCandle.symbol.in_(active_symbols),
+            DailyCandle.date <= target_date
+        ).scalar()
+        if latest and latest != target_date:
+            logger.warning(
+                "No candles on requested scan date %s; falling back to latest available %s",
+                target_date, latest
+            )
+            return latest
+        return target_date
+
+    def run_daily_scan(
+        self,
+        db: Session,
+        target_date: datetime.date,
+        force_recompute: bool = False,
+        manage_status_lock: bool = True,
+    ) -> list[ScanResult]:
         """
         Wrapper that handles scanner execution flags and calls the implementation.
+
+        manage_status_lock: when False, caller already holds the shared busy flag
+        (used by catch-up pipeline spanning multiple days).
         """
-        global _local_scanner_running
-        _local_scanner_running = True
-        client = _get_redis()
-        if client:
-            try:
-                client.set("scanner:is_running", "true", ex=3600)
-            except Exception:
-                pass
+        if manage_status_lock:
+            set_scanner_running(True)
         try:
-            return self._run_daily_scan_impl(db, target_date, force_recompute=force_recompute)
+            effective_date = self.resolve_effective_scan_date(db, target_date)
+            return self._run_daily_scan_impl(db, effective_date, force_recompute=force_recompute)
         finally:
-            _local_scanner_running = False
-            client = _get_redis()
-            if client:
-                try:
-                    client.delete("scanner:is_running")
-                except Exception:
-                    pass
+            if manage_status_lock:
+                set_scanner_running(False)
 
     def _save_last_run_timestamp(self):
         try:

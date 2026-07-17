@@ -2,10 +2,12 @@ import datetime
 from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 from pydantic import BaseModel, Field
 from backend.app.storage.database import get_db
 from backend.app.models.scan_result import ScanResult
 from backend.app.models.candle import DailyCandle
+from backend.app.models.universe import UniverseStock
 from backend.app.services.scanner import ScannerService
 
 router = APIRouter()
@@ -14,6 +16,8 @@ scanner_service = ScannerService()
 class ScanTriggerResponse(BaseModel):
     status: str
     message: str
+    effective_date: Optional[str] = None
+    mode: Optional[str] = None
 
 class ScannerStatusResponse(BaseModel):
     is_running: bool
@@ -23,6 +27,13 @@ class ScannerStatusResponse(BaseModel):
 class ScanRequest(BaseModel):
     date: Optional[str] = Field(None, description="Date in YYYY-MM-DD format. Defaults to current date if not provided.")
     force_recompute: bool = Field(False, description="If true, bypasses the Redis signal cache and recomputes indicators fresh. Use after a data correction/backfill to guarantee no stale cached signals are reused.")
+    ingest: bool = Field(
+        True,
+        description=(
+            "If true (default), run catch-up market-data ingestion before scoring. "
+            "Set false to score existing DB candles only."
+        ),
+    )
 
 class ScanResultSchema(BaseModel):
     symbol: str
@@ -64,10 +75,22 @@ def run_scan_in_background(target_date: datetime.date, force_recompute: bool = F
     finally:
         db_bg.close()
 
+
+def run_ingest_and_scan_in_background(through_date: datetime.date):
+    """Full pipeline: catch up missing candles + short history, then score."""
+    import logging
+    from backend.app.services.scheduler import sync_catch_up_pipeline
+    logger = logging.getLogger("nse_scanner.api_background")
+    try:
+        sync_catch_up_pipeline(through_date)
+    except Exception as e:
+        logger.error(f"Error executing ingest+scan catch-up through {through_date}: {e}", exc_info=True)
+
 @router.post("/scan", response_model=ScanTriggerResponse)
 def trigger_scan(background_tasks: BackgroundTasks, payload: Optional[ScanRequest] = None):
     """
-    Asynchronously trigger strategy scan scoring on the active universe for a given date in the background.
+    Asynchronously trigger strategy scoring (and by default, market-data catch-up)
+    for the active universe.
     """
     from zoneinfo import ZoneInfo
     target_date = datetime.datetime.now(ZoneInfo("Asia/Kolkata")).date()
@@ -82,8 +105,30 @@ def trigger_scan(background_tasks: BackgroundTasks, payload: Optional[ScanReques
         raise HTTPException(status_code=409, detail="A scan is already in progress.")
         
     force_recompute = bool(payload and payload.force_recompute)
+    do_ingest = True if payload is None else bool(payload.ingest)
+
+    if do_ingest:
+        background_tasks.add_task(run_ingest_and_scan_in_background, target_date)
+        return {
+            "status": "scanning",
+            "mode": "ingest_and_scan",
+            "effective_date": target_date.strftime("%Y-%m-%d"),
+            "message": (
+                f"Catch-up ingestion + scan triggered through {target_date.isoformat()}. "
+                "This downloads missing market data before scoring."
+            ),
+        }
+
     background_tasks.add_task(run_scan_in_background, target_date, force_recompute)
-    return {"status": "scanning", "message": "Scan triggered successfully in the background."}
+    return {
+        "status": "scanning",
+        "mode": "scan_only",
+        "effective_date": target_date.strftime("%Y-%m-%d"),
+        "message": (
+            f"Score-only scan triggered for {target_date.isoformat()} "
+            "(falls back to latest candle date if that day has no data)."
+        ),
+    }
 
 @router.get("/status", response_model=ScannerStatusResponse)
 def get_scanner_status():
@@ -232,4 +277,72 @@ def get_last_run(db: Session = Depends(get_db)):
     return {"timestamp": None}
 
 
+class DataHealthSchema(BaseModel):
+    last_candle_date: Optional[str] = None
+    last_scan_date: Optional[str] = None
+    active_symbols: int
+    symbols_with_min_history: int
+    symbols_scored_on_last_candle: int
+    min_history_candles: int
+    calendar_days_behind: Optional[int] = None
+    is_stale: bool
+    warning: Optional[str] = None
+
+
+@router.get("/data-health", response_model=DataHealthSchema)
+def get_data_health(db: Session = Depends(get_db)):
+    """
+    Operational snapshot of market-data freshness and scoreable universe coverage.
+    Use this to detect stalled ingestion (no new candles) vs. true zero-signal days.
+    """
+    from zoneinfo import ZoneInfo
+    from backend.app.services.scheduler import MIN_HISTORY_CANDLES, get_short_history_symbols
+
+    today = datetime.datetime.now(ZoneInfo("Asia/Kolkata")).date()
+    active_symbols = [
+        s.symbol for s in db.query(UniverseStock).filter(UniverseStock.is_active == True).all()
+    ]
+    active_count = len(active_symbols)
+
+    last_candle = db.query(func.max(DailyCandle.date)).scalar()
+    last_scan = db.query(func.max(ScanResult.date)).scalar()
+
+    short = get_short_history_symbols(db, active_symbols, MIN_HISTORY_CANDLES) if active_symbols else []
+    sufficient = active_count - len(short)
+
+    scored_on_last = 0
+    if last_candle is not None:
+        scored_on_last = db.query(func.count(ScanResult.id)).filter(
+            ScanResult.date == last_candle
+        ).scalar() or 0
+
+    days_behind = (today - last_candle).days if last_candle is not None else None
+    # Allow weekend lag; flag true staleness beyond 3 calendar days
+    is_stale = days_behind is None or days_behind > 3
+
+    warning = None
+    if last_candle is None:
+        warning = "No candle data in database. Run ingest+scan after Fyers auth."
+    elif days_behind and days_behind > 1:
+        warning = (
+            f"Market data is {days_behind} calendar days behind "
+            f"(last candle {last_candle.isoformat()}). Catch-up ingestion required."
+        )
+    elif sufficient < active_count:
+        warning = (
+            f"{active_count - sufficient} active symbols have fewer than "
+            f"{MIN_HISTORY_CANDLES} candles and cannot score trend/VCP reliably."
+        )
+
+    return {
+        "last_candle_date": last_candle.isoformat() if last_candle else None,
+        "last_scan_date": last_scan.isoformat() if last_scan else None,
+        "active_symbols": active_count,
+        "symbols_with_min_history": sufficient,
+        "symbols_scored_on_last_candle": scored_on_last,
+        "min_history_candles": MIN_HISTORY_CANDLES,
+        "calendar_days_behind": days_behind,
+        "is_stale": is_stale,
+        "warning": warning,
+    }
 
