@@ -329,7 +329,7 @@ def get_data_health(db: Session = Depends(get_db)):
             f"Market data is {days_behind} calendar days behind "
             f"(last candle {last_candle.isoformat()}). Catch-up ingestion required."
         )
-    elif sufficient < active_count:
+    elif active_count > 0 and (sufficient / active_count) < 0.90:
         warning = (
             f"{active_count - sufficient} active symbols have fewer than "
             f"{MIN_HISTORY_CANDLES} candles and cannot score trend/VCP reliably."
