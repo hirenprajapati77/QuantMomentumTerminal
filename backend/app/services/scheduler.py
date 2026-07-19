@@ -223,6 +223,14 @@ def sync_catch_up_pipeline(through_date: datetime.date | None = None):
             return
 
         days = list(iter_weekdays(start, through_date))
+        if not days:
+            logger.info(f"No missing weekdays to catch up; scoring latest candle date {latest}...")
+            scanner_service = ScannerService()
+            scanner_service.run_daily_scan(
+                db, latest, force_recompute=bool(backfilled), manage_status_lock=False
+            )
+            return
+
         if len(days) > MAX_CATCHUP_DAYS:
             logger.warning(
                 "Catch-up window has %d weekdays; limiting to the most recent %d.",
