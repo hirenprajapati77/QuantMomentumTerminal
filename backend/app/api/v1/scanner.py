@@ -317,13 +317,14 @@ def get_data_health(db: Session = Depends(get_db)):
         ).scalar() or 0
 
     days_behind = (today - last_candle).days if last_candle is not None else None
-    # Allow weekend lag; flag true staleness beyond 3 calendar days
-    is_stale = days_behind is None or days_behind > 3
+    # On Saturday (weekday 5) and Sunday (weekday 6), Friday's candle (days_behind 1 or 2) is up to date.
+    is_weekend_lag = (today.weekday() in (5, 6)) and (days_behind in (1, 2) if days_behind is not None else False)
+    is_stale = days_behind is None or (days_behind > 3 and not is_weekend_lag)
 
     warning = None
     if last_candle is None:
         warning = "No candle data in database. Run ingest+scan after Fyers auth."
-    elif days_behind and days_behind > 1:
+    elif days_behind and days_behind > 1 and not is_weekend_lag:
         warning = (
             f"Market data is {days_behind} calendar days behind "
             f"(last candle {last_candle.isoformat()}). Catch-up ingestion required."
