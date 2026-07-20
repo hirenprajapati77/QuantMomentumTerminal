@@ -104,12 +104,12 @@ export default function Dashboard({ onNavigate }: Props) {
       // Begin polling the background task status
       pollScanStatus();
     } catch (e: any) {
-      const msg = e.message || '';
+      const msg = String(e.message || e.detail || '').toLowerCase();
       if (e.status === 409 || msg.includes('409') || msg.includes('already in progress')) {
         setScanMessage('A scan is already in progress. Monitoring progress...');
         pollScanStatus();
       } else {
-        setScanMessage(`Scan failed: ${e.message}`);
+        setScanMessage(`Scan failed: ${e.message || 'Unknown error'}`);
         setLoadingScan(false);
       }
     }

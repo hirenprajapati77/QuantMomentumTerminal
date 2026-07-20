@@ -18,8 +18,11 @@ export const apiClient = {
       headers
     });
     if (!res.ok) {
-      const err = await res.json().catch(() => ({ detail: 'API request failed' }));
-      throw new Error(err.detail || 'API request failed');
+      const errData = await res.json().catch(() => ({ detail: 'API request failed' }));
+      const error: any = new Error(errData.detail || 'API request failed');
+      error.status = res.status;
+      error.detail = errData.detail;
+      throw error;
     }
     return res.json();
   },
@@ -38,8 +41,11 @@ export const apiClient = {
       body: JSON.stringify(body),
     });
     if (!res.ok) {
-      const err = await res.json().catch(() => ({ detail: 'API request failed' }));
-      throw new Error(err.detail || 'API request failed');
+      const errData = await res.json().catch(() => ({ detail: 'API request failed' }));
+      const error: any = new Error(errData.detail || 'API request failed');
+      error.status = res.status;
+      error.detail = errData.detail;
+      throw error;
     }
     return res.json();
   }
