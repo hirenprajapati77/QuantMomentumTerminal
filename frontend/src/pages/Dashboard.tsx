@@ -75,6 +75,15 @@ export default function Dashboard({ onNavigate }: Props) {
 
   useEffect(() => {
     loadData();
+
+    // Check if a scan is already running when page loads
+    apiClient.get('/scanner/status').then((res: any) => {
+      if (res && res.is_running) {
+        setLoadingScan(true);
+        setScanMessage('A scan is currently in progress. Monitoring progress...');
+        pollScanStatus();
+      }
+    }).catch(() => {});
   }, []);
 
   const pollScanStatus = async () => {
