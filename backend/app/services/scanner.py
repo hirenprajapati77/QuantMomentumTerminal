@@ -59,7 +59,12 @@ def _get_redis():
         return _redis_client
     try:
         import redis
-        client = redis.from_url(settings.REDIS_URL, decode_responses=True, socket_connect_timeout=2)
+        client = redis.from_url(
+            settings.REDIS_URL,
+            decode_responses=True,
+            socket_connect_timeout=2,
+            socket_timeout=2
+        )
         client.ping()
         _redis_client = client
         logger.info("Redis cache connected: %s", settings.REDIS_URL)
