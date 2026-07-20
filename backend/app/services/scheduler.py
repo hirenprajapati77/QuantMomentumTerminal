@@ -119,26 +119,19 @@ def sync_daily_ingestion_and_scan(target_date: datetime.date) -> bool:
 
         logger.info(f"Active universe has {len(active_symbols)} symbols to update.")
 
-        # Try downloading Bhavcopy with 4 attempts and 15-minute delay
+        # Try downloading Bhavcopy (fast check without blocking worker thread)
         bhav_df = None
-        for attempt in range(1, 5):
-            try:
-                logger.info(f"Attempting NSE Bhavcopy download for {target_date} (Attempt {attempt}/4)...")
-                bhav_df = market_data_service.download_nse_bhavcopy(target_date)
-                if bhav_df is not None and not bhav_df.empty:
-                    logger.info("NSE Bhavcopy successfully downloaded.")
-                    break
-                else:
-                    logger.warning(f"Bhavcopy for {target_date} returned empty. Attempt {attempt} failed.")
-            except Exception as e:
-                logger.warning(f"Bhavcopy download failed on attempt {attempt}: {e}")
-
-            if attempt < 4:
-                logger.info("Waiting 15 minutes before retrying...")
-                time.sleep(15 * 60)  # 15 minutes (synchronous sleep in worker thread)
+        try:
+            logger.info(f"Attempting NSE Bhavcopy download for {target_date}...")
+            bhav_df = market_data_service.download_nse_bhavcopy(target_date)
+            if bhav_df is not None and not bhav_df.empty:
+                logger.info("NSE Bhavcopy successfully downloaded.")
+            else:
+                logger.warning(f"Bhavcopy for {target_date} not available yet. Proceeding with symbol-level OHLCV.")
+        except Exception as e:
+            logger.warning(f"Bhavcopy download skipped for {target_date}: {e}. Proceeding with symbol-level OHLCV.")
 
         if bhav_df is None or bhav_df.empty:
-            logger.error(f"Failed to fetch Bhavcopy for {target_date} after 4 attempts. Proceeding with OHLCV only.")
             bhavcopy_cache = {}
         else:
             bhavcopy_cache = {target_date: bhav_df}
