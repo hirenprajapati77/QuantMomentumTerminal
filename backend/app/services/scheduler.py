@@ -81,10 +81,14 @@ def backfill_short_history_symbols(
     bhavcopy_cache: dict = {}
     for sym in short:
         try:
-            count = market_data_service.ingest_symbol_data(
-                db, sym, start_date, through_date, bhavcopy_cache
-            )
-            saved += count
+            sym_db = SessionLocal()
+            try:
+                count = market_data_service.ingest_symbol_data(
+                    sym_db, sym, start_date, through_date, bhavcopy_cache
+                )
+                saved += count
+            finally:
+                sym_db.close()
             time.sleep(0.35)  # Fyers rate-limit guard
         except Exception as e:
             logger.error(f"History backfill failed for {sym}: {e}")
@@ -119,9 +123,9 @@ def sync_daily_ingestion_and_scan(target_date: datetime.date) -> bool:
         bhav_df = None
         for attempt in range(1, 5):
             try:
-                logger.info(f"Attempting to download NSE Bhavcopy for {target_date} (Attempt {attempt}/4)...")
+                logger.info(f"Attempting NSE Bhavcopy download for {target_date} (Attempt {attempt}/4)...")
                 bhav_df = market_data_service.download_nse_bhavcopy(target_date)
-                if not bhav_df.empty:
+                if bhav_df is not None and not bhav_df.empty:
                     logger.info("NSE Bhavcopy successfully downloaded.")
                     break
                 else:
@@ -144,11 +148,15 @@ def sync_daily_ingestion_and_scan(target_date: datetime.date) -> bool:
         ingested = 0
         for sym in active_symbols:
             try:
-                count = market_data_service.ingest_symbol_data(
-                    db, sym, target_date, target_date, bhavcopy_cache
-                )
-                if count:
-                    ingested += 1
+                sym_db = SessionLocal()
+                try:
+                    count = market_data_service.ingest_symbol_data(
+                        sym_db, sym, target_date, target_date, bhavcopy_cache
+                    )
+                    if count:
+                        ingested += 1
+                finally:
+                    sym_db.close()
                 # Prevent Fyers API rate limiting (HTTP 429)
                 time.sleep(0.35)
             except Exception as e:
