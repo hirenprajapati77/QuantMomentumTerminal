@@ -215,18 +215,21 @@ class MarketDataService:
                         delivery_qty = int(symbol_bhav.iloc[0]["delivery_qty"])
                         delivery_pct = float(symbol_bhav.iloc[0]["delivery_pct"])
                 
-                # If not in cache, try downloading it (on-demand download)
-                if delivery_qty is None:
+                # If not in cache, try downloading it once and record result (even if empty) to avoid redundant requests
+                if delivery_qty is None and (bhavcopy_cache is None or date_val not in bhavcopy_cache):
                     try:
                         bhav_df = self.download_nse_bhavcopy(date_val)
-                        if not bhav_df.empty:
-                            if bhavcopy_cache is not None:
-                                bhavcopy_cache[date_val] = bhav_df
-                            symbol_bhav = bhav_df[bhav_df["symbol"] == symbol]
+                        bhav_res = bhav_df if (bhav_df is not None and not bhav_df.empty) else pd.DataFrame()
+                        if bhavcopy_cache is not None:
+                            bhavcopy_cache[date_val] = bhav_res
+                        if not bhav_res.empty:
+                            symbol_bhav = bhav_res[bhav_res["symbol"] == symbol]
                             if not symbol_bhav.empty:
                                 delivery_qty = int(symbol_bhav.iloc[0]["delivery_qty"])
                                 delivery_pct = float(symbol_bhav.iloc[0]["delivery_pct"])
                     except Exception as ex:
+                        if bhavcopy_cache is not None:
+                            bhavcopy_cache[date_val] = pd.DataFrame()
                         logger.warning(f"Could not fetch delivery details for {symbol} on {date_val}: {ex}")
                 
                 # Lookup DB record using normalized string key representation
