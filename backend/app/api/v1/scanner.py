@@ -1,3 +1,4 @@
+import time
 import datetime
 from typing import Optional, List
 from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
@@ -307,8 +308,14 @@ def get_data_health(db: Session = Depends(get_db)):
     last_candle = db.query(func.max(DailyCandle.date)).scalar()
     last_scan = db.query(func.max(ScanResult.date)).scalar()
 
-    short = get_short_history_symbols(db, active_symbols, MIN_HISTORY_CANDLES) if active_symbols else []
-    sufficient = active_count - len(short)
+    # Cache short history count for 60s to prevent repeated heavy GROUP BY queries
+    global _short_history_cache
+    now = time.time()
+    if '_short_history_cache' not in globals() or (now - _short_history_cache.get("timestamp", 0)) > 60:
+        short = get_short_history_symbols(db, active_symbols, MIN_HISTORY_CANDLES) if active_symbols else []
+        _short_history_cache = {"timestamp": now, "short_count": len(short)}
+    short_count = _short_history_cache.get("short_count", 0)
+    sufficient = active_count - short_count
 
     scored_on_last = 0
     if last_candle is not None:
